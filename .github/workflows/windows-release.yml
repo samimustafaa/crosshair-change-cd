@@ -1,0 +1,82 @@
+name: Build Windows EXE and publish release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check Python syntax
+        run: python -m py_compile sg0hann_crosshair.py updater.py
+
+      - name: Read app version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "import sg0hann_crosshair; print(sg0hann_crosshair.VERSION)"
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid app version' }
+          "number=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install PyInstaller
+        run: python -m pip install --disable-pip-version-check pyinstaller
+
+      - name: Build standalone crosshair EXE
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name sg0hann-Crosshair sg0hann_crosshair.py
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Windows setup EXE
+        shell: pwsh
+        run: |
+          $installerCompiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $installerCompiler)) { throw 'Inno Setup compiler not found' }
+          & $installerCompiler "/DMyAppVersion=${{ steps.version.outputs.number }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed' }
+
+      - name: Create SHA256 checksum file
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash 'dist/sg0hann-Crosshair-Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  sg0hann-Crosshair-Setup.exe" | Set-Content -Path 'dist/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Upload EXE and installer as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sg0hann-Crosshair-Windows
+          path: |
+            dist/sg0hann-Crosshair.exe
+            dist/sg0hann-Crosshair-Setup.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release for new version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.number }}
+        run: |
+          $tag = "v$env:VERSION"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists. Bump VERSION to publish the next update."
+          } else {
+            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair.exe' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "Windows standalone EXE + one-app installer. Built from the main branch. Startup and manual update checks included. SHA256 verified updates."
+            if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+          }
