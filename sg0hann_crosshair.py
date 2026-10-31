@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.1.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.2.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -16,9 +16,10 @@ from pathlib import Path
 from tkinter import colorchooser, messagebox, ttk
 
 from aim_state import AimTracker, crosshair_visible
+from build_state import BuildTracker, displayed_reticle
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -32,6 +33,7 @@ DEFAULTS = {
     "offset_x": 0, "offset_y": 0, "size": 100, "thickness": 3,
     "only_in_game": True, "overlay_enabled": True,
     "hide_while_aiming": True, "aim_input": "Hold",
+    "build_mode_reticle": True,
 }
 
 if sys.platform == "win32":
@@ -66,7 +68,8 @@ def config_load() -> dict:
     try:
         raw = json.loads(settings_path().read_text(encoding="utf-8"))
         for key in ("active_mode", "offset_x", "offset_y", "size", "thickness",
-                    "only_in_game", "overlay_enabled", "hide_while_aiming", "aim_input"):
+                    "only_in_game", "overlay_enabled", "hide_while_aiming", "aim_input",
+                    "build_mode_reticle"):
             if key in raw:
                 data[key] = raw[key]
         for mode in MODES:
@@ -92,6 +95,7 @@ def config_load() -> dict:
     data["only_in_game"] = bool(data["only_in_game"])
     data["overlay_enabled"] = bool(data["overlay_enabled"])
     data["hide_while_aiming"] = bool(data["hide_while_aiming"])
+    data["build_mode_reticle"] = bool(data["build_mode_reticle"])
     if data["aim_input"] not in ("Hold", "Toggle"):
         data["aim_input"] = "Hold"
     return data
@@ -156,12 +160,16 @@ def draw_reticle(canvas, x, y, mode, color, scale, line_width, tag="reticle"):
 
 class CrosshairApp:
     KEY_CODES = {"1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34, "5": 0x35,
-                 "F6": 0x75, "F7": 0x76, "F8": 0x77}
+                 "F6": 0x75, "F7": 0x76, "F8": 0x77,
+                 "F": 0x46, "X": 0x58, "C": 0x43, "H": 0x48,
+                 "F4": 0x73, "E": 0x45, "ESC": 0x1B}
 
     def __init__(self):
         self.cfg = config_load()
         self.down = {key: False for key in self.KEY_CODES}
         self.in_game = False
+        self.build_tracker = BuildTracker()
+        self.build_active = False
         self.aim_tracker = AimTracker()
         self.aim_active = False
         self.previous_draw = None
@@ -194,6 +202,7 @@ class CrosshairApp:
         self.mode_var = tk.StringVar(value=self.cfg["active_mode"])
         self.overlay_var = tk.BooleanVar(value=self.cfg["overlay_enabled"])
         self.only_game_var = tk.BooleanVar(value=self.cfg["only_in_game"])
+        self.build_reticle_var = tk.BooleanVar(value=self.cfg["build_mode_reticle"])
         self.hide_ads_var = tk.BooleanVar(value=self.cfg["hide_while_aiming"])
         self.ads_input_var = tk.StringVar(value=self.cfg["aim_input"])
         self.x_var, self.y_var = tk.IntVar(value=self.cfg["offset_x"]), tk.IntVar(value=self.cfg["offset_y"])
@@ -277,7 +286,8 @@ class CrosshairApp:
         self.label(settings, "OVERLAY OPTIONS", 11, True).pack(anchor="w", pady=(0, 7))
         for title, value in (("Enable crosshair overlay", self.overlay_var),
                              ("Show only while game is focused", self.only_game_var),
-                             ("Hide crosshair when aiming / scoped", self.hide_ads_var)):
+                             ("Hide crosshair when aiming / scoped", self.hide_ads_var),
+                             ("Circle crosshair when building", self.build_reticle_var)):
             tk.Checkbutton(settings, text=title, variable=value,
                            command=self.options_changed, bg=PANEL, fg=TEXT,
                            activebackground=PANEL, activeforeground=TEXT,
@@ -290,6 +300,8 @@ class CrosshairApp:
         ads_dropdown.pack(side=tk.RIGHT)
         ads_dropdown.bind("<<ComboboxSelected>>", lambda _: self.options_changed())
         self.label(settings, "Hold: hide while RMB is down. Toggle: hide until next RMB click.",
+                   8, color=MUTED, wraplength=310, justify="left").pack(anchor="w", pady=(5, 0))
+        self.label(settings, "Build: F / X / C / H / F4  |  Cancel: E / Esc  |  Weapon: 1-5",
                    8, color=MUTED, wraplength=310, justify="left").pack(anchor="w", pady=(5, 0))
 
         mapping = self.card(right)
@@ -378,6 +390,10 @@ class CrosshairApp:
     def options_changed(self):
         self.cfg["overlay_enabled"] = self.overlay_var.get()
         self.cfg["only_in_game"] = self.only_game_var.get()
+        self.cfg["build_mode_reticle"] = self.build_reticle_var.get()
+        if not self.cfg["build_mode_reticle"]:
+            self.build_tracker.reset()
+            self.build_active = False
         self.cfg["hide_while_aiming"] = self.hide_ads_var.get()
         selected_aim_mode = self.ads_input_var.get()
         if selected_aim_mode not in ("Hold", "Toggle"):
@@ -402,10 +418,12 @@ class CrosshairApp:
         self.save_timer = self.window.after(450, lambda: config_save(self.cfg))
 
     def render(self, force=False):
+        building = self.cfg["build_mode_reticle"] and self.in_game and self.build_active
+        mode = displayed_reticle(self.cfg["active_mode"], building)
         visible = crosshair_visible(
             self.cfg["overlay_enabled"], self.in_game, self.cfg["only_in_game"],
-            self.cfg["hide_while_aiming"], self.aim_active)
-        state = (visible, self.cfg["active_mode"], self.cfg["colors"][self.cfg["active_mode"]],
+            self.cfg["hide_while_aiming"], self.aim_active and not building)
+        state = (visible, mode, self.cfg["colors"][mode],
                  self.cfg["offset_x"], self.cfg["offset_y"], self.cfg["size"], self.cfg["thickness"])
         if not force and state == self.previous_draw:
             return
@@ -414,7 +432,7 @@ class CrosshairApp:
         if visible:
             draw_reticle(self.canvas,
                          self.sw/2 + self.cfg["offset_x"], self.sh/2 + self.cfg["offset_y"],
-                         self.cfg["active_mode"], self.cfg["colors"][self.cfg["active_mode"]],
+                         mode, self.cfg["colors"][mode],
                          self.cfg["size"] / 100, self.cfg["thickness"])
 
     def reset(self):
@@ -422,6 +440,9 @@ class CrosshairApp:
         self.mode_var.set(self.cfg["active_mode"])
         self.overlay_var.set(self.cfg["overlay_enabled"])
         self.only_game_var.set(self.cfg["only_in_game"])
+        self.build_reticle_var.set(self.cfg["build_mode_reticle"])
+        self.build_tracker.reset()
+        self.build_active = False
         self.hide_ads_var.set(self.cfg["hide_while_aiming"])
         self.ads_input_var.set(self.cfg["aim_input"])
         self.aim_tracker.reset()
@@ -457,24 +478,33 @@ class CrosshairApp:
             self.aim_active = self.aim_tracker.update(
                 self.in_game, bool(user32.GetAsyncKeyState(0x02) & 0x8000),
                 self.cfg["aim_input"])
+            # Process keydown edges only while the game is foreground; never
+            # treat held keys as repeated build selections.
+            new_presses = []
             for name, code in self.KEY_CODES.items():
                 pressed = bool(user32.GetAsyncKeyState(code) & 0x8000)
                 if pressed and not self.down[name]:
-                    if name == "F6":
-                        idx = (MODES.index(self.cfg["active_mode"]) + 1) % len(MODES)
-                        self.set_mode(MODES[idx])
-                    elif name == "F7":
-                        self.overlay_var.set(not self.overlay_var.get())
-                        self.options_changed()
-                    elif name == "F8":
-                        self.toggle_settings()
-                    elif self.in_game:
-                        self.set_mode(self.cfg["slot_mapping"][name])
+                    new_presses.append(name)
                 self.down[name] = pressed
+            self.build_active = self.build_tracker.update(
+                self.in_game, new_presses, self.cfg["build_mode_reticle"])
+            for name in new_presses:
+                if name == "F6":
+                    idx = (MODES.index(self.cfg["active_mode"]) + 1) % len(MODES)
+                    self.set_mode(MODES[idx])
+                elif name == "F7":
+                    self.overlay_var.set(not self.overlay_var.get())
+                    self.options_changed()
+                elif name == "F8":
+                    self.toggle_settings()
+                elif self.in_game and name in self.cfg["slot_mapping"]:
+                    self.set_mode(self.cfg["slot_mapping"][name])
             if not self.cfg["overlay_enabled"]:
                 self.status.set("Overlay paused - F7 to enable.")
             elif self.cfg["only_in_game"] and not self.in_game:
                 self.status.set("Waiting for Creative Destruction (client.exe)...")
+            elif self.in_game and self.cfg["build_mode_reticle"] and self.build_active:
+                self.status.set("Build mode: circle reticle (E/Esc cancel; 1-5 select weapon).")
             elif self.in_game and self.cfg["hide_while_aiming"] and self.aim_active:
                 self.status.set("Scoped / aiming - crosshair hidden. Release aim to restore.")
             else:
