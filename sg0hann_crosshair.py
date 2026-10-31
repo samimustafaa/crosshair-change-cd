@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.6.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.7.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -17,9 +17,10 @@ from tkinter import colorchooser, messagebox, ttk
 
 from aim_state import AimTracker, crosshair_visible
 from build_state import BuildTracker, displayed_reticle
+from game_status import detect_running_game
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -168,6 +169,8 @@ class CrosshairApp:
         self.cfg = config_load()
         self.down = {key: False for key in self.KEY_CODES}
         self.in_game = False
+        self.game_running = False
+        self.game_exe = None
         self.build_tracker = BuildTracker()
         self.build_active = False
         self.aim_tracker = AimTracker()
@@ -210,12 +213,15 @@ class CrosshairApp:
         self.thick_var = tk.IntVar(value=self.cfg["thickness"])
         self.slots = {i: tk.StringVar(value=self.cfg["slot_mapping"][i]) for i in "12345"}
         self.status = tk.StringVar(value="Ready - focus Creative Destruction to see the overlay.")
+        self.game_status = tk.StringVar(value="● GAME CLOSED")
+        self.game_detail = tk.StringVar(value="Creative Destruction not detected")
         self.update_status = tk.StringVar(value=f"App version {VERSION} - GitHub Releases")
         self.previews, self.color_buttons = {}, {}
         self.version = VERSION
         self.draw_reticle = draw_reticle
         self.create_ui()
         self.refresh_previews()
+        self.poll_game_process()
         self.poll()
         self.root.after(1600, lambda: self.check_updates(silent=True))
         self.root.after(150, self.poll_updates)
@@ -358,6 +364,31 @@ class CrosshairApp:
         config_save(self.cfg)
         self.root.destroy()
 
+    def poll_game_process(self):
+        try:
+            detected = detect_running_game()
+            self.game_running = detected is not None
+            self.game_exe = detected
+            if self.game_running:
+                self.game_status.set("● GAME OPENED")
+                self.game_detail.set(
+                    f"Creative Destruction running ({detected})"
+                    + (" • In focus" if self.in_game else " • In background")
+                )
+                self.game_badge.configure(bg="#253F2D", fg="#9CE379")
+            else:
+                self.game_status.set("● GAME CLOSED")
+                self.game_detail.set("Creative Destruction is not running")
+                self.game_badge.configure(bg="#2E2427", fg="#FF9C9C")
+        except Exception as exc:
+            self.game_status.set("● STATUS UNKNOWN")
+            self.game_detail.set(f"Could not query game process: {exc}")
+        finally:
+            try:
+                self.root.after(1300, self.poll_game_process)
+            except tk.TclError:
+                pass
+
     def poll(self):
         try:
             self.in_game = game_focused()
@@ -388,7 +419,10 @@ class CrosshairApp:
             if not self.cfg["overlay_enabled"]:
                 self.status.set("Overlay paused - F7 to enable.")
             elif self.cfg["only_in_game"] and not self.in_game:
-                self.status.set("Waiting for Creative Destruction (client.exe)...")
+                if self.game_running:
+                    self.status.set("GAME OPENED - switch to the Creative Destruction window for the overlay.")
+                else:
+                    self.status.set("GAME CLOSED - launch Creative Destruction (client.exe).")
             elif self.in_game and self.cfg["build_mode_reticle"] and self.build_active:
                 self.status.set("Build mode: circle reticle (E/Esc cancel; 1-5 select weapon).")
             elif self.in_game and self.cfg["hide_while_aiming"] and self.aim_active:
