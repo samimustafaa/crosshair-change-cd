@@ -435,6 +435,10 @@ class CrosshairApp:
         else:
             self.hide()
 
+    def reset_vision_baseline(self):
+        self.vision_tracker.reset()
+        self.vision_state.set("Vision: baseline cleared; stand still, unzoomed to recalibrate.")
+
     def quit(self):
         self.vision_tracker.stop()
         config_save(self.cfg)
@@ -520,9 +524,15 @@ class CrosshairApp:
             idle = not (bool(user32.GetAsyncKeyState(0x01) & 0x8000)
                         or bool(user32.GetAsyncKeyState(0x20) & 0x8000)
                         or self.aim_active or self.build_active)
+            overlay_color=self.cfg["colors"].get(active_mode,"#FFFFFF")
+            # A white overlay can look identical to the native white reticle;
+            # do not let the detector track its own drawn shape.
+            white_overlay=all(int(overlay_color[i:i+2],16)>180
+                              for i in (1,3,5))
             self.vision_tracker.set_state(
                 focused=self.in_game, mode=active_mode, idle=idle,
                 allowed=(self.cfg["vision_assist"] and self.cfg["overlay_enabled"]
+                         and not white_overlay
                          and not self.build_active and not self.aim_active))
             measured = self.vision_tracker.latest()
             if (self.cfg["vision_assist"] and measured
