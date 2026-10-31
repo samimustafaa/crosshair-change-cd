@@ -99,6 +99,6 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists. Bump VERSION to publish the next update."
           } else {
-            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair-Portable.zip' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "v1.1.0: per-weapon shotgun and AR bloom, separate Sniper scope mode, adjustable ADS shrinking and optional confidence-gated white reticle screen tracking with baseline calibration. No claimed accuracy percentage."
+            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair-Portable.zip' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "v1.1.2: calibrates AR bar geometry from supplied 43.8s 60fps gameplay (20-33px idle, 39-52px expanded); improved four-way contrast-based native reticle tracking with confidence fallback; one-click AR video reference. No claimed 97% accuracy."
             if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
           }
