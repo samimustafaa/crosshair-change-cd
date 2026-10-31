@@ -66,3 +66,9 @@ The new **Native Lab** sidebar page opens a user-selected local `ui1.npk`, previ
 - Status is checked about every 1.3 seconds using read-only process enumeration. For `client.exe`, the detector prefers Creative Destruction installation paths. If Windows hides a process path, an exact `client.exe` name is used; this may occasionally recognize an unrelated process with that name.
 
 All existing crosshair settings, updating, native preview/export, and experimental copy-only features remain.
+
+## Reactive spread (v1.0.9)
+
+In **Gameplay → Spray & jump tracking**, enable **Reactive crosshair spread** (enabled by default). When Creative Destruction is focused, holding **left mouse button** while using a gun progressively expands the colored reticle and **Space** causes a temporary jump expansion. The reticle gradually returns to normal after releasing the input. Default amounts: 85% spray expansion, 55% jump expansion, 320 ms fire recovery. Sliders adjust both expansion amounts and recovery speed. Use **Preview spray + jump** to see the maximum effect in the UI without having to enter a match.
+
+Sampling is scheduled every **12 milliseconds** (approximately 83 updates per second when the Windows event loop can keep up); no precise latency guarantee. Reading button input is faster and less prone to false visual detections than tracking white HUD pixels against the game world. This is a **predictive approximation**, NOT actual native-game bloom tracking. Input-based spread may not perfectly match the base white crosshair, weapon fire-rate curves, falling, moving, crouching, or custom jump/fire keybinds. It does not read game memory or modify NPK files. Scoped ADS, building and pickaxe do not expand the custom reticle.
