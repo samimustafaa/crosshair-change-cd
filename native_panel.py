@@ -10,7 +10,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, colorchooser, messagebox, ttk
 from PIL import Image, ImageTk
-from native_assets import CANDIDATES, read_candidate, recolor_white, export_preview, build_experimental_copy
+from native_assets import (CANDIDATES, archive_overview, read_candidate, recolor_white,
+                           export_preview, build_experimental_copy)
 
 BG, PANEL, CARD = "#10141B", "#1A2029", "#222A35"
 FG, MUTED, ACCENT = "#F1F4F6", "#9AA5B1", "#9CE379"
@@ -24,9 +25,14 @@ class NativePanel:
         self.color = tk.StringVar(value=app.cfg["colors"]["Pickaxe"])
         self.selection = tk.StringVar(value=self._choice(580))
         self.status = tk.StringVar(value="Choose a local ui1.npk to inspect asset candidates.")
+        self.archive_status = tk.StringVar(value="○  NO ARCHIVE LOADED")
+        self.archive_details = tk.StringVar(value="Select a full .npk file. Split .7z volumes are not supported here.")
+        self.loaded_path = None
+        self.path_job = None
         self.images = []
         self.busy = False
         self.construct()
+        self.archive.trace_add("write", lambda *_: self.path_changed())
 
     @staticmethod
     def _choice(index):
@@ -62,15 +68,27 @@ class NativePanel:
         controls = self.section("1   SELECT ORIGINAL ARCHIVE")
         self.caption(controls, "Your extracted ui1.npk (not a .7z split volume)",
                      9,MUTED).pack(anchor="w")
-        tk.Entry(controls, textvariable=self.archive, bg=CARD, fg=FG, insertbackground=FG,
-                 relief="flat").pack(fill="x",ipady=9,pady=(9,6))
-        self.btn(controls, "Browse ui1.npk", self.browse).pack(anchor="w")
+        path_entry = tk.Entry(controls, textvariable=self.archive, bg=CARD, fg=FG,
+                              insertbackground=FG, relief="flat")
+        path_entry.pack(fill="x", ipady=9, pady=(9,6))
+        path_entry.bind("<Return>", lambda _event: self.load_archive())
+        row = tk.Frame(controls, bg=PANEL)
+        row.pack(fill="x")
+        self.btn(row, "Browse ui1.npk", self.browse).pack(side="left")
+        self.btn(row, "Load archive", self.load_archive, highlight=True).pack(side="left", padx=8)
+        self.archive_indicator = tk.Label(controls, textvariable=self.archive_status, bg=PANEL,
+                            fg=ACCENT, anchor="w", font=("Segoe UI",11,"bold"))
+        self.archive_indicator.pack(fill="x", pady=(12, 3))
+        tk.Label(controls, textvariable=self.archive_details, bg=PANEL, fg=MUTED,
+                 anchor="w", justify="left", wraplength=430,
+                 font=("Segoe UI",9)).pack(fill="x")
 
         candidate = self.section("2   SELECT ASSET / COLOR")
         vals=[self._choice(i) for i in CANDIDATES]
         self.combo=ttk.Combobox(candidate, textvariable=self.selection,
                                 values=vals, state="readonly",width=45)
         self.combo.pack(fill="x",pady=(3,10))
+        self.combo.bind("<<ComboboxSelected>>", lambda _event: self.preview())
         row=tk.Frame(candidate,bg=PANEL)
         row.pack(fill="x")
         tk.Entry(row, textvariable=self.color, width=12, bg=CARD, fg=FG,
@@ -110,12 +128,56 @@ class NativePanel:
             raise ValueError("Select an existing .npk archive.")
         return path
 
+    def path_changed(self):
+        self.loaded_path = None
+        self.archive_status.set("○  ARCHIVE NOT VERIFIED")
+        self.archive_indicator.configure(fg="#F6B17B")
+        self.archive_details.set("Checking selected file…")
+        if self.path_job is not None:
+            self.app.window.after_cancel(self.path_job)
+        if self.archive.get().strip():
+            self.path_job = self.app.window.after(650, self.load_archive)
+        else:
+            self.archive_details.set("Select the complete ui1.npk file or paste its path.")
+
+    def load_archive(self):
+        if self.path_job is not None:
+            self.app.window.after_cancel(self.path_job)
+            self.path_job = None
+        try:
+            path = self.source()
+            overview = archive_overview(path)
+        except Exception as exc:
+            self.loaded_path = None
+            self.archive_status.set("✖  ARCHIVE NOT LOADED")
+            self.archive_indicator.configure(fg="#F6B17B")
+            self.archive_details.set(str(exc))
+            self.status.set(f"Archive load error: {exc}")
+            self.clear_preview()
+            return
+        self.loaded_path = path.resolve()
+        self.archive_status.set("●  ARCHIVE LOADED")
+        self.archive_indicator.configure(fg=ACCENT)
+        matches = len(overview["matched_candidates"])
+        self.archive_details.set(
+            f"{overview['filename']}  •  {overview['size_mb']:.1f} MiB  •  "
+            f"{overview['resource_count']:,} resources  •  "
+            f"{matches}/{len(CANDIDATES)} candidate IDs matched."
+        )
+        self.status.set("Archive loaded. Previewing selected resource; no changes to game files.")
+        self.preview()
+
+    def clear_preview(self):
+        self.images = []
+        self.original_label.configure(image="", text="Original preview")
+        self.recolor_label.configure(image="", text="Recolored preview")
+
     def browse(self):
         chosen=filedialog.askopenfilename(parent=self.app.window,title="Select ui1.npk",
                                          filetypes=[("NPK archives","*.npk")])
         if chosen:
             self.archive.set(chosen)
-            self.preview()
+            self.load_archive()
 
     def pick_color(self):
         choice=colorchooser.askcolor(color=self.color.get(),parent=self.app.window)
@@ -126,7 +188,11 @@ class NativePanel:
 
     def preview(self):
         try:
-            image, metadata=read_candidate(self.source(),self.index())
+            path = self.source()
+            if self.loaded_path != path.resolve():
+                self.load_archive()
+                return
+            image, metadata=read_candidate(path,self.index())
             colored=recolor_white(image,self.color.get())
             thumbs=[]
             for item in (image,colored):
@@ -139,7 +205,12 @@ class NativePanel:
             self.status.set(f"Resource {metadata['id']} / {metadata['dimensions']} "
                             "— visually similar only; usage not confirmed.")
         except Exception as exc:
+            self.clear_preview()
             self.status.set(f"Preview failed: {exc}")
+            self.archive_details.set(
+                "Archive loaded, but selected preview failed: "
+                f"{exc}. Try another resource ID."
+            )
 
     def export_png(self):
         try:
