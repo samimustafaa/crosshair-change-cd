@@ -24,6 +24,39 @@ CANDIDATES = {
 class ArchiveError(ValueError):
     pass
 
+def archive_overview(archive):
+    """Fast read-only archive verification without loading the 605 MB file."""
+    archive = Path(archive)
+    if not archive.is_file() or archive.suffix.lower() != ".npk":
+        raise ArchiveError("Choose an extracted .npk file, not a .7z volume.")
+    size = archive.stat().st_size
+    if size < 28:
+        raise ArchiveError("The NPK archive is incomplete.")
+    with archive.open("rb") as stream:
+        header = stream.read(28)
+        if header[:4] != b"NXPK":
+            raise ArchiveError("This is not an NXPK archive.")
+        count = struct.unpack_from("<I", header, 4)[0]
+        table = struct.unpack_from("<I", header, HEADER_TABLE_OFFSET)[0]
+        if not 0 < count <= 100_000 or table < 28 or table + count * RECORD.size != size:
+            raise ArchiveError("Invalid or incomplete NPK resource table.")
+        matched = []
+        for index, (expected_id, _) in CANDIDATES.items():
+            if index >= count:
+                continue
+            stream.seek(table + index * RECORD.size)
+            rid = struct.unpack("<I", stream.read(4))[0]
+            if f"{rid:08x}" == expected_id:
+                matched.append(index)
+    return {
+        "filename": archive.name,
+        "size_bytes": size,
+        "size_mb": size / (1024 * 1024),
+        "resource_count": count,
+        "matched_candidates": tuple(matched),
+    }
+
+
 def _index(mm):
     if len(mm) < 32 or mm[:4] != b"NXPK":
         raise ArchiveError("Not a supported NXPK archive.")
