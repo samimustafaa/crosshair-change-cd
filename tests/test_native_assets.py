@@ -8,7 +8,8 @@ import unittest
 import lz4.block
 from PIL import Image
 
-from native_assets import RECORD, _xor_prefix, read_candidate, build_experimental_copy, export_preview
+from native_assets import (RECORD, _xor_prefix, archive_overview, read_candidate,
+                           build_experimental_copy, export_preview)
 
 
 def make_archive(directory, compressed):
@@ -31,6 +32,20 @@ def make_archive(directory, compressed):
 
 
 class NativeAssetTests(unittest.TestCase):
+    def test_archive_summary_before_preview_and_bad_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            src = make_archive(directory, False)
+            overview = archive_overview(src)
+            self.assertEqual(overview["resource_count"], 1)
+            self.assertEqual(overview["matched_candidates"], ())
+            self.assertTrue(overview["size_bytes"] > 28)
+            with self.assertRaises(ValueError):
+                archive_overview(Path(directory) / "missing.npk")
+            split_volume = Path(directory) / "ui1.7z.001"
+            split_volume.write_bytes(b"garbage")
+            with self.assertRaises(ValueError):
+                archive_overview(split_volume)
+
     def test_archive_copy_round_trip_and_never_overwrite(self):
         for compressed in (False, True):
             with self.subTest(compressed=compressed), tempfile.TemporaryDirectory() as directory:
