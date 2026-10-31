@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install Native Lab dependencies before testing
+        run: python -m pip install --disable-pip-version-check pillow lz4
+
       - name: Check Python syntax
         run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py native_assets.py native_panel.py
 
