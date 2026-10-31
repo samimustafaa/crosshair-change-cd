@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.7.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.8.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -20,7 +20,7 @@ from build_state import BuildTracker, displayed_reticle
 from game_status import detect_running_game
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.7"
+VERSION = "1.0.8"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
