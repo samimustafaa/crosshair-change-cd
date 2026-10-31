@@ -109,6 +109,7 @@ def build_interface(app):
 
     page_button("Crosshair", "Crosshair", "◎")
     page_button("Gameplay", "Gameplay", "⌘")
+    page_button("Native Lab", "Native Lab", "◉")
     page_button("Updates", "Updates", "↻")
 
     left_footer = tk.Frame(sidebar, bg=SIDEBAR)
@@ -164,7 +165,7 @@ def build_interface(app):
 
     content = tk.Frame(main, bg=BG)
     content.pack(side="left", fill="both", expand=True)
-    for key in ("Crosshair", "Gameplay", "Updates"):
+    for key in ("Crosshair", "Gameplay", "Native Lab", "Updates"):
         shell = tk.Frame(content, bg=BG)
         shell.place(relx=0, rely=0, relwidth=1, relheight=1)
         surface = tk.Canvas(shell, bg=BG, bd=0, highlightthickness=0)
@@ -193,6 +194,8 @@ def build_interface(app):
 
     create_crosshair_page(app, app.pages["Crosshair"])
     create_gameplay_page(app, app.pages["Gameplay"])
+    from native_panel import add_panel
+    add_panel(app, app.pages["Native Lab"])
     create_updates_page(app, app.pages["Updates"])
     app.current_page = ""
     show_page(app, "Crosshair")
@@ -354,6 +357,7 @@ def show_page(app, key):
     titles = {
         "Crosshair": ("Crosshair", "Customize every weapon with precision."),
         "Gameplay": ("Gameplay", "Automatic switching and scope behavior."),
+        "Native Lab": ("Native Lab", "Experimental NPK candidate research and safe exports."),
         "Updates": ("Updates", "Version management and safety."),
     }
     app.page_title.set(titles[key][0])
