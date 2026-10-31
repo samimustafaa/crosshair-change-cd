@@ -22,7 +22,7 @@ jobs:
           python-version: '3.12'
 
       - name: Check Python syntax
-        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py
+        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py native_assets.py native_panel.py
 
       - name: Test aim, build and crosshair behavior
         run: python -m unittest discover -s tests -v
@@ -36,7 +36,7 @@ jobs:
           "number=$version" >> $env:GITHUB_OUTPUT
 
       - name: Install PyInstaller
-        run: python -m pip install --disable-pip-version-check pyinstaller
+        run: python -m pip install --disable-pip-version-check pyinstaller pillow lz4
 
       - name: Build crosshair app with installed Python runtime
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name sg0hann-Crosshair sg0hann_crosshair.py
