@@ -28,11 +28,12 @@ SetupLogging=yes
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "dist\sg0hann-Crosshair.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\sg0hann-Crosshair\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\sg0hann Crosshair Color Lab"; Filename: "{app}\sg0hann-Crosshair.exe"
 Name: "{autodesktop}\sg0hann Crosshair Color Lab"; Filename: "{app}\sg0hann-Crosshair.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\sg0hann-Crosshair.exe"; Description: "Launch sg0hann Crosshair Color Lab"; Flags: nowait
+Filename: "{app}\sg0hann-Crosshair.exe"; Description: "Launch sg0hann Crosshair Color Lab"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\sg0hann-Crosshair.exe"; Flags: nowait skipifnotsilent
