@@ -58,3 +58,11 @@ For silent in-app updates, the installer closes the existing application, instal
 The new **Native Lab** sidebar page opens a user-selected local `ui1.npk`, previews four indexed visual candidates (white ring, three-arc ring, alternate ring, segmented ring), recolors white pixels into user-chosen colors, and exports PNG images. An optional explicit-consent button produces a **separate experimental NPK copy** and reads its modified asset back to confirm archive consistency. The original archive and game installation are never modified by the app.
 
 **Important:** The candidate file IDs are not proven to control combat crosshairs, and this archive's two unknown hash fields are not recalculated. In-game use and archive integrity compatibility are **unverified**. Do not replace your game files or use a modified NPK online based only on this copy. No anti-cheat bypass is attempted. The previously working external overlay is still the default functional crosshair customization method.
+
+## v1.0.7 — Native Lab feedback and game status
+
+- In **Native Lab**, browse to the **complete extracted** `ui1.npk`, or paste the path and press **Enter**; selection automatically validates the archive. A visible `ARCHIVE LOADED` or `ARCHIVE NOT LOADED` status appears beside the input, including file size, indexed resources and candidate ID matches. The currently selected image automatically previews; preview errors are visible near the archive input. **Loading a file does not apply any crosshair changes**—the original native reticle IDs are still unverified.
+- In the top bar, `GAME OPENED` appears in green if Creative Destruction's process (typically `client.exe`) is running, even when the app is in the foreground. `GAME CLOSED` appears otherwise. The game overlay still shows only while Creative Destruction has focus when “Show only in Creative Destruction” is enabled.
+- Status is checked about every 1.3 seconds using read-only process enumeration. For `client.exe`, the detector prefers Creative Destruction installation paths. If Windows hides a process path, an exact `client.exe` name is used; this may occasionally recognize an unrelated process with that name.
+
+All existing crosshair settings, updating, native preview/export, and experimental copy-only features remain.
