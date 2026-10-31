@@ -97,9 +97,9 @@ class NativePanel:
                           "in-game crosshair modification.", 9,MUTED).pack(anchor="w")
         self.btn(test,"Create experimental NPK copy…",
                  self.experimental_copy).pack(fill="x",pady=(10,0))
-        self.caption(self.parent,"",9,ACCENT).pack(anchor="w")
-        self.caption(self.parent,"",9,ACCENT,textvariable=self.status).pack(
-            anchor="w",pady=(0,14))
+        tk.Label(self.parent, textvariable=self.status, bg=BG, fg=ACCENT,
+                 font=("Segoe UI",9), wraplength=440,
+                 justify="left").pack(anchor="w",pady=(0,14))
 
     def index(self):
         return int(self.selection.get().split()[0])
