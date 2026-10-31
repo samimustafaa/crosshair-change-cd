@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.8.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.9.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -9,6 +9,7 @@ import json
 import os
 import queue
 import sys
+import time
 import threading
 import tkinter as tk
 from ctypes import wintypes
@@ -18,9 +19,10 @@ from tkinter import colorchooser, messagebox, ttk
 from aim_state import AimTracker, crosshair_visible
 from build_state import BuildTracker, displayed_reticle
 from game_status import detect_running_game
+from reactive_spread import ReactiveSpread, SpreadTuning
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -35,6 +37,8 @@ DEFAULTS = {
     "only_in_game": True, "overlay_enabled": True,
     "hide_while_aiming": True, "aim_input": "Hold",
     "build_mode_reticle": True,
+    "reactive_spread": True, "spray_percent": 85,
+    "jump_percent": 55, "recovery_ms": 320,
 }
 
 if sys.platform == "win32":
@@ -70,7 +74,8 @@ def config_load() -> dict:
         raw = json.loads(settings_path().read_text(encoding="utf-8"))
         for key in ("active_mode", "offset_x", "offset_y", "size", "thickness",
                     "only_in_game", "overlay_enabled", "hide_while_aiming", "aim_input",
-                    "build_mode_reticle"):
+                    "build_mode_reticle", "reactive_spread", "spray_percent",
+                    "jump_percent", "recovery_ms"):
             if key in raw:
                 data[key] = raw[key]
         for mode in MODES:
@@ -97,6 +102,14 @@ def config_load() -> dict:
     data["overlay_enabled"] = bool(data["overlay_enabled"])
     data["hide_while_aiming"] = bool(data["hide_while_aiming"])
     data["build_mode_reticle"] = bool(data["build_mode_reticle"])
+    data["reactive_spread"] = bool(data["reactive_spread"])
+    for key, low, high in (("spray_percent", 0, 180),
+                           ("jump_percent", 0, 140),
+                           ("recovery_ms", 100, 1500)):
+        try:
+            data[key] = min(high, max(low, int(data[key])))
+        except (ValueError, TypeError):
+            data[key] = DEFAULTS[key]
     if data["aim_input"] not in ("Hold", "Toggle"):
         data["aim_input"] = "Hold"
     return data
@@ -136,8 +149,10 @@ def game_focused() -> bool:
             or "creative destruction" in title or "cd revive" in title)
 
 
-def draw_reticle(canvas, x, y, mode, color, scale, line_width, tag="reticle"):
-    radius = 34 * scale
+def draw_reticle(canvas, x, y, mode, color, scale, line_width, tag="reticle", spread=1.0):
+    # Move marks apart without stretching the line segments or center dot.
+    spread = max(1.0, min(4.0, spread))
+    radius = 34 * scale * spread if mode != "Pickaxe" else 34 * scale
     dot = max(1.5, 1.9 * scale)
     if mode == "Shotgun":
         for start in (55, 145, 235, 325):
@@ -148,7 +163,8 @@ def draw_reticle(canvas, x, y, mode, color, scale, line_width, tag="reticle"):
         canvas.create_oval(x-radius, y-radius, x+radius, y+radius,
                            outline=color, width=line_width, tags=(tag,))
     else:
-        near, far = 18*scale, 32*scale
+        gap = (spread - 1.0) * 20 * scale
+        near, far = 18*scale + gap, 32*scale + gap
         for x1, y1, x2, y2 in (
             (x-far, y, x-near, y), (x+near, y, x+far, y),
             (x, y-far, x, y-near), (x, y+near, x, y+far),
@@ -175,6 +191,10 @@ class CrosshairApp:
         self.build_active = False
         self.aim_tracker = AimTracker()
         self.aim_active = False
+        self.reactive_tracker = ReactiveSpread()
+        self.spread_multiplier = 1.0
+        self.last_poll_time = time.perf_counter()
+        self.preview_test_multiplier = 1.0
         self.previous_draw = None
         self.save_timer = None
         self.update_busy = False
@@ -208,6 +228,10 @@ class CrosshairApp:
         self.build_reticle_var = tk.BooleanVar(value=self.cfg["build_mode_reticle"])
         self.hide_ads_var = tk.BooleanVar(value=self.cfg["hide_while_aiming"])
         self.ads_input_var = tk.StringVar(value=self.cfg["aim_input"])
+        self.reactive_var = tk.BooleanVar(value=self.cfg["reactive_spread"])
+        self.spray_var = tk.IntVar(value=self.cfg["spray_percent"])
+        self.jump_var = tk.IntVar(value=self.cfg["jump_percent"])
+        self.recovery_var = tk.IntVar(value=self.cfg["recovery_ms"])
         self.x_var, self.y_var = tk.IntVar(value=self.cfg["offset_x"]), tk.IntVar(value=self.cfg["offset_y"])
         self.size_var = tk.IntVar(value=self.cfg["size"])
         self.thick_var = tk.IntVar(value=self.cfg["thickness"])
@@ -286,6 +310,13 @@ class CrosshairApp:
             self.build_tracker.reset()
             self.build_active = False
         self.cfg["hide_while_aiming"] = self.hide_ads_var.get()
+        self.cfg["reactive_spread"] = self.reactive_var.get()
+        self.cfg["spray_percent"] = self.bounded(self.spray_var, 85, 0, 180)
+        self.cfg["jump_percent"] = self.bounded(self.jump_var, 55, 0, 140)
+        self.cfg["recovery_ms"] = self.bounded(self.recovery_var, 320, 100, 1500)
+        if not self.cfg["reactive_spread"]:
+            self.reactive_tracker.reset()
+            self.spread_multiplier = 1.0
         selected_aim_mode = self.ads_input_var.get()
         if selected_aim_mode not in ("Hold", "Toggle"):
             selected_aim_mode = "Hold"
@@ -315,8 +346,10 @@ class CrosshairApp:
         visible = crosshair_visible(
             self.cfg["overlay_enabled"], self.in_game, self.cfg["only_in_game"],
             self.cfg["hide_while_aiming"], self.aim_active and not building)
+        dynamic_spread = self.spread_multiplier if not building else 1.0
         state = (visible, mode, self.cfg["colors"][mode],
-                 self.cfg["offset_x"], self.cfg["offset_y"], self.cfg["size"], self.cfg["thickness"])
+                 self.cfg["offset_x"], self.cfg["offset_y"], self.cfg["size"],
+                 self.cfg["thickness"], round(dynamic_spread, 3))
         if not force and state == self.previous_draw:
             return
         self.previous_draw = state
@@ -325,7 +358,8 @@ class CrosshairApp:
             draw_reticle(self.canvas,
                          self.sw/2 + self.cfg["offset_x"], self.sh/2 + self.cfg["offset_y"],
                          mode, self.cfg["colors"][mode],
-                         self.cfg["size"] / 100, self.cfg["thickness"])
+                         self.cfg["size"] / 100, self.cfg["thickness"],
+                         spread=dynamic_spread)
 
     def reset(self):
         self.cfg = json.loads(json.dumps(DEFAULTS))
@@ -339,6 +373,13 @@ class CrosshairApp:
         self.ads_input_var.set(self.cfg["aim_input"])
         self.aim_tracker.reset()
         self.aim_active = False
+        self.reactive_tracker.reset()
+        self.spread_multiplier = 1.0
+        self.preview_test_multiplier = 1.0
+        self.reactive_var.set(self.cfg["reactive_spread"])
+        self.spray_var.set(self.cfg["spray_percent"])
+        self.jump_var.set(self.cfg["jump_percent"])
+        self.recovery_var.set(self.cfg["recovery_ms"])
         self.x_var.set(0)
         self.y_var.set(0)
         self.size_var.set(100)
@@ -391,6 +432,9 @@ class CrosshairApp:
 
     def poll(self):
         try:
+            now = time.perf_counter()
+            elapsed = max(0, now - self.last_poll_time)
+            self.last_poll_time = now
             self.in_game = game_focused()
             self.aim_active = self.aim_tracker.update(
                 self.in_game, bool(user32.GetAsyncKeyState(0x02) & 0x8000),
@@ -416,6 +460,22 @@ class CrosshairApp:
                     self.toggle_settings()
                 elif self.in_game and name in self.cfg["slot_mapping"]:
                     self.set_mode(self.cfg["slot_mapping"][name])
+
+            self.spread_multiplier = self.reactive_tracker.update(
+                elapsed,
+                focused=self.in_game,
+                mode=self.cfg["active_mode"],
+                firing=bool(user32.GetAsyncKeyState(0x01) & 0x8000),
+                jumping=bool(user32.GetAsyncKeyState(0x20) & 0x8000),
+                aiming=self.aim_active,
+                building=self.build_active,
+                enabled=self.cfg["reactive_spread"],
+                tuning=SpreadTuning(
+                    spray_percent=self.cfg["spray_percent"],
+                    jump_percent=self.cfg["jump_percent"],
+                    recovery_ms=self.cfg["recovery_ms"],
+                ),
+            )
             if not self.cfg["overlay_enabled"]:
                 self.status.set("Overlay paused - F7 to enable.")
             elif self.cfg["only_in_game"] and not self.in_game:
@@ -430,7 +490,7 @@ class CrosshairApp:
             else:
                 self.status.set(f"Active: {self.cfg['active_mode']} - F6 style / F7 overlay / F8 settings")
             self.render()
-            self.root.after(30, self.poll)
+            self.root.after(12, self.poll)
         except tk.TclError:
             pass
 
