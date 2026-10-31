@@ -1,6 +1,6 @@
 # sg0hann Crosshair Color Lab
 
-Windows click-through crosshair overlay for Creative Destruction. **v1.0.2 adds automatic build reticle switching:** pressing a build hotkey (F/X/C/H/F4) while the game is focused temporarily displays the circular Pickaxe-style reticle; E/Esc or selecting a weapon slot 1–5 returns to the selected shotgun/AR/pickaxe reticle. This does not overwrite selected weapon colors. **v1.0.1 added scoped/ADS behavior:** by default the colored overlay hides while right mouse button is held in-game, then reappears on release. Choose **Toggle** under Right-click aim if the game is set to toggle ADS instead of hold. This avoids leaving a stationary crosshair on top of the scope or zoomed AR view. Includes shotgun, AR/sniper and pickaxe reticles; editable colors, size, offsets and weapon-slot mappings.
+Windows click-through crosshair overlay for Creative Destruction. **v1.0.3 redesign:** wider dark settings window with sidebar navigation, independent Crosshair / Gameplay / Updates pages, always-visible live reticle preview, per-mode color picker and size/thickness/offset sliders, visual focus states, and scrolling panels on smaller monitors. **v1.0.2 adds automatic build reticle switching:** pressing a build hotkey (F/X/C/H/F4) while the game is focused temporarily displays the circular Pickaxe-style reticle; E/Esc or selecting a weapon slot 1–5 returns to the selected shotgun/AR/pickaxe reticle. This does not overwrite selected weapon colors. **v1.0.1 added scoped/ADS behavior:** by default the colored overlay hides while right mouse button is held in-game, then reappears on release. Choose **Toggle** under Right-click aim if the game is set to toggle ADS instead of hold. This avoids leaving a stationary crosshair on top of the scope or zoomed AR view. Includes shotgun, AR/sniper and pickaxe reticles; editable colors, size, offsets and weapon-slot mappings.
 
 The overlay does not edit game files or bypass anti-cheat. The native white reticle remains underneath.
 
@@ -29,3 +29,13 @@ The **Circle crosshair when building** option is enabled by default in Overlay O
 - You can turn **Circle crosshair when building** off if your game's controls differ.
 
 **Limitations:** This version follows default keyboard hotkeys, not internal game build-mode state; mouse-only build selections, custom keybinds, exiting build mode via an untracked control, or refocusing the game in build mode may leave the external overlay temporarily out of sync. Use E/Esc or select a weapon slot to resync. It does not alter the game's native white reticle.
+
+## Interface redesign (v1.0.3)
+
+The settings window uses a clean dark wide layout (up to 1180×772), with three left navigation pages:
+
+- **Crosshair:** change shotgun, AR/sniper, and pickaxe reticle colors; select the active weapon; adjust position, size and thickness; see live-preview changes immediately.
+- **Gameplay:** enable/disable overlay, hide during ADS, automatically switch to the circular build reticle, configure hold/toggle ADS, and map slots 1–5.
+- **Updates:** manually check GitHub Releases and install an update after approval. An automatic check still runs at startup.
+
+All gameplay behavior from v1.0.2 remains. The window is non-resizable and centered. Scroll the left settings panel when space is limited; the preview stays visible. Press **F8** to open/hide settings while playing.
