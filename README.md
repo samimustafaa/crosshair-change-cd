@@ -6,7 +6,7 @@ The overlay does not edit game files or bypass anti-cheat. The native white reti
 
 The app checks this repository's latest GitHub Release on startup and via the **Check for Updates** button. An available update is offered in a popup; with approval, the app downloads and verifies the installer and runs it. Settings persist in `%APPDATA%\sg0hann-crosshair\settings.json`.
 
-Download the latest Windows `.exe` from the [Releases](https://github.com/samimustafaa/crosshair-change-cd/releases/latest) page after the Windows build completes.
+Download the **installer** from [Releases](https://github.com/samimustafaa/crosshair-change-cd/releases/latest). The portable alternative is now a ZIP containing both the executable and its `_internal` Python libraries: extract **all files together** before launching. The EXE alone is no longer a portable executable.
 
 The workflow runs on Windows and uses PyInstaller plus Inno Setup. Each new app version should increase the `VERSION` constant in `sg0hann_crosshair.py`. A new push to `main` publishes the corresponding release if that version hasn't already been released.
 
@@ -39,3 +39,16 @@ The settings window uses a clean dark wide layout (up to 1180×772), with three 
 - **Updates:** manually check GitHub Releases and install an update after approval. An automatic check still runs at startup.
 
 All gameplay behavior from v1.0.2 remains. The window is non-resizable and centered. Scroll the left settings panel when space is limited; the preview stays visible. Press **F8** to open/hide settings while playing.
+
+## Windows Python DLL startup fix (v1.0.4)
+
+The previous one-file EXE extracted the Python runtime to a random `%TEMP%\\_MEI...` directory on every launch. A missing, quarantined, or inaccessible DLL in that temporary folder could show **Failed to load Python DLL python312.dll**. v1.0.4 builds with **PyInstaller --onedir** instead. Inno Setup installs `sg0hann-Crosshair.exe` and `_internal\\python312.dll` into the same persistent application directory. The Windows CI build checks the DLL exists and runs the packaged application with `--self-test` to verify Python/Tk startup before uploading the installer.
+
+To recover from an existing startup error:
+1. Exit sg0hann Crosshair Color Lab completely (end it in Task Manager if necessary).
+2. Download and run the **v1.0.4 installer** directly from GitHub Releases (do not run the old standalone EXE).
+3. You can install over the existing version; your saved settings live separately in `%APPDATA%\\sg0hann-crosshair\\settings.json` and should remain intact.
+4. If using the portable package, extract the entire ZIP with the `_internal` folder present alongside the EXE. Do not move just the EXE elsewhere.
+5. If a DLL still fails to load after a full install, check Windows Security Protection History for quarantined runtime files and the official Microsoft Visual C++ Redistributable x64 prerequisites. Do not disable antivirus or add broad exclusions.
+
+For silent in-app updates, the installer closes the existing application, installs all files, and launches the updated copy after installation; it avoids restarting an old version before copying the new runtime.
