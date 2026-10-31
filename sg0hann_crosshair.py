@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.5.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.6.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -19,7 +19,7 @@ from aim_state import AimTracker, crosshair_visible
 from build_state import BuildTracker, displayed_reticle
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -480,12 +480,15 @@ def main():
         return 1
     try:
         if "--self-test" in sys.argv:
-            # CI verifies that the packaged executable can load the installed
-            # Python DLL and initialize Tk without starting the overlay.
-            test_window = tk.Tk()
-            test_window.withdraw()
-            test_window.update_idletasks()
-            test_window.destroy()
+            # CI must launch the COMPLETE settings window, including Native Lab.
+            # Exit immediately without starting any game-file modifications.
+            test_app = CrosshairApp()
+            test_app.root.update_idletasks()
+            from interface import show_page
+            for page in ("Crosshair", "Gameplay", "Native Lab", "Updates"):
+                show_page(test_app, page)
+                test_app.root.update_idletasks()
+            test_app.quit()
             return 0
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
