@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.9.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.1.0.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -20,16 +20,17 @@ from aim_state import AimTracker, crosshair_visible
 from build_state import BuildTracker, displayed_reticle
 from game_status import detect_running_game
 from reactive_spread import ReactiveSpread, SpreadTuning
+from vision_assist import VisionAssist
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.9"
+VERSION = "1.1.0"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
 TEXT, MUTED, ACCENT = "#EFF2F6", "#9DA8B6", "#7FB5FF"
-MODES = ("Shotgun", "AR / Sniper", "Pickaxe")
+MODES = ("Shotgun", "AR / Sniper", "Sniper", "Pickaxe")
 DEFAULTS = {
-    "colors": {"Shotgun": "#00E7FF", "AR / Sniper": "#B2FF59", "Pickaxe": "#FFCC42"},
+    "colors": {"Shotgun": "#00E7FF", "AR / Sniper": "#B2FF59", "Sniper": "#B2FF59", "Pickaxe": "#FFCC42"},
     "active_mode": "AR / Sniper",
     "slot_mapping": {"1": "Pickaxe", "2": "AR / Sniper", "3": "Shotgun",
                      "4": "AR / Sniper", "5": "AR / Sniper"},
@@ -38,7 +39,10 @@ DEFAULTS = {
     "hide_while_aiming": True, "aim_input": "Hold",
     "build_mode_reticle": True,
     "reactive_spread": True, "spray_percent": 85,
-    "jump_percent": 55, "recovery_ms": 320,
+    "jump_percent": 36, "recovery_ms": 320,
+    "shotgun_spray_percent": 18, "shotgun_jump_percent": 22,
+    "ar_ads_percent": 72, "shotgun_ads_percent": 78,
+    "vision_assist": False,
 }
 
 if sys.platform == "win32":
@@ -75,7 +79,9 @@ def config_load() -> dict:
         for key in ("active_mode", "offset_x", "offset_y", "size", "thickness",
                     "only_in_game", "overlay_enabled", "hide_while_aiming", "aim_input",
                     "build_mode_reticle", "reactive_spread", "spray_percent",
-                    "jump_percent", "recovery_ms"):
+                    "jump_percent", "recovery_ms", "shotgun_spray_percent",
+                    "shotgun_jump_percent", "ar_ads_percent", "shotgun_ads_percent",
+                    "vision_assist"):
             if key in raw:
                 data[key] = raw[key]
         for mode in MODES:
@@ -103,9 +109,14 @@ def config_load() -> dict:
     data["hide_while_aiming"] = bool(data["hide_while_aiming"])
     data["build_mode_reticle"] = bool(data["build_mode_reticle"])
     data["reactive_spread"] = bool(data["reactive_spread"])
+    data["vision_assist"] = bool(data["vision_assist"])
     for key, low, high in (("spray_percent", 0, 180),
                            ("jump_percent", 0, 140),
-                           ("recovery_ms", 100, 1500)):
+                           ("recovery_ms", 100, 1500),
+                           ("shotgun_spray_percent", 0, 100),
+                           ("shotgun_jump_percent", 0, 100),
+                           ("ar_ads_percent", 40, 100),
+                           ("shotgun_ads_percent", 40, 100)):
         try:
             data[key] = min(high, max(low, int(data[key])))
         except (ValueError, TypeError):
@@ -151,7 +162,7 @@ def game_focused() -> bool:
 
 def draw_reticle(canvas, x, y, mode, color, scale, line_width, tag="reticle", spread=1.0):
     # Move marks apart without stretching the line segments or center dot.
-    spread = max(1.0, min(4.0, spread))
+    spread = max(0.55, min(4.0, spread))
     radius = 34 * scale * spread if mode != "Pickaxe" else 34 * scale
     dot = max(1.5, 1.9 * scale)
     if mode == "Shotgun":
@@ -164,7 +175,7 @@ def draw_reticle(canvas, x, y, mode, color, scale, line_width, tag="reticle", sp
                            outline=color, width=line_width, tags=(tag,))
     else:
         gap = (spread - 1.0) * 20 * scale
-        near, far = 18*scale + gap, 32*scale + gap
+        near, far = max(2.5*scale,18*scale + gap), max(14*scale,32*scale + gap)
         for x1, y1, x2, y2 in (
             (x-far, y, x-near, y), (x+near, y, x+far, y),
             (x, y-far, x, y-near), (x, y+near, x, y+far),
@@ -192,6 +203,8 @@ class CrosshairApp:
         self.aim_tracker = AimTracker()
         self.aim_active = False
         self.reactive_tracker = ReactiveSpread()
+        self.vision_tracker = VisionAssist()
+        self.vision_tracker.start()
         self.spread_multiplier = 1.0
         self.last_poll_time = time.perf_counter()
         self.preview_test_multiplier = 1.0
@@ -232,6 +245,12 @@ class CrosshairApp:
         self.spray_var = tk.IntVar(value=self.cfg["spray_percent"])
         self.jump_var = tk.IntVar(value=self.cfg["jump_percent"])
         self.recovery_var = tk.IntVar(value=self.cfg["recovery_ms"])
+        self.shotgun_spray_var = tk.IntVar(value=self.cfg["shotgun_spray_percent"])
+        self.shotgun_jump_var = tk.IntVar(value=self.cfg["shotgun_jump_percent"])
+        self.ar_ads_var = tk.IntVar(value=self.cfg["ar_ads_percent"])
+        self.shotgun_ads_var = tk.IntVar(value=self.cfg["shotgun_ads_percent"])
+        self.vision_var = tk.BooleanVar(value=self.cfg["vision_assist"])
+        self.vision_state = tk.StringVar(value="Vision: disabled")
         self.x_var, self.y_var = tk.IntVar(value=self.cfg["offset_x"]), tk.IntVar(value=self.cfg["offset_y"])
         self.size_var = tk.IntVar(value=self.cfg["size"])
         self.thick_var = tk.IntVar(value=self.cfg["thickness"])
@@ -314,6 +333,11 @@ class CrosshairApp:
         self.cfg["spray_percent"] = self.bounded(self.spray_var, 85, 0, 180)
         self.cfg["jump_percent"] = self.bounded(self.jump_var, 55, 0, 140)
         self.cfg["recovery_ms"] = self.bounded(self.recovery_var, 320, 100, 1500)
+        self.cfg["shotgun_spray_percent"] = self.bounded(self.shotgun_spray_var, 18, 0, 100)
+        self.cfg["shotgun_jump_percent"] = self.bounded(self.shotgun_jump_var, 22, 0, 100)
+        self.cfg["ar_ads_percent"] = self.bounded(self.ar_ads_var, 72, 40, 100)
+        self.cfg["shotgun_ads_percent"] = self.bounded(self.shotgun_ads_var, 78, 40, 100)
+        self.cfg["vision_assist"] = self.vision_var.get()
         if not self.cfg["reactive_spread"]:
             self.reactive_tracker.reset()
             self.spread_multiplier = 1.0
@@ -345,8 +369,12 @@ class CrosshairApp:
         mode = displayed_reticle(self.cfg["active_mode"], building)
         visible = crosshair_visible(
             self.cfg["overlay_enabled"], self.in_game, self.cfg["only_in_game"],
-            self.cfg["hide_while_aiming"], self.aim_active and not building)
+            self.cfg["hide_while_aiming"],
+            self.aim_active and not building and mode == "Sniper")
         dynamic_spread = self.spread_multiplier if not building else 1.0
+        if self.aim_active and not building and mode in ("Shotgun", "AR / Sniper"):
+            dynamic_spread = (self.cfg["shotgun_ads_percent"] if mode == "Shotgun"
+                              else self.cfg["ar_ads_percent"]) / 100.0
         state = (visible, mode, self.cfg["colors"][mode],
                  self.cfg["offset_x"], self.cfg["offset_y"], self.cfg["size"],
                  self.cfg["thickness"], round(dynamic_spread, 3))
@@ -377,6 +405,12 @@ class CrosshairApp:
         self.spread_multiplier = 1.0
         self.preview_test_multiplier = 1.0
         self.reactive_var.set(self.cfg["reactive_spread"])
+        self.vision_var.set(self.cfg["vision_assist"])
+        self.shotgun_spray_var.set(self.cfg["shotgun_spray_percent"])
+        self.shotgun_jump_var.set(self.cfg["shotgun_jump_percent"])
+        self.ar_ads_var.set(self.cfg["ar_ads_percent"])
+        self.shotgun_ads_var.set(self.cfg["shotgun_ads_percent"])
+        self.vision_tracker.reset()
         self.spray_var.set(self.cfg["spray_percent"])
         self.jump_var.set(self.cfg["jump_percent"])
         self.recovery_var.set(self.cfg["recovery_ms"])
@@ -402,6 +436,7 @@ class CrosshairApp:
             self.hide()
 
     def quit(self):
+        self.vision_tracker.stop()
         config_save(self.cfg)
         self.root.destroy()
 
@@ -461,7 +496,16 @@ class CrosshairApp:
                 elif self.in_game and name in self.cfg["slot_mapping"]:
                     self.set_mode(self.cfg["slot_mapping"][name])
 
-            self.spread_multiplier = self.reactive_tracker.update(
+            tuning = SpreadTuning(
+                spray_percent=(self.cfg["shotgun_spray_percent"]
+                               if self.cfg["active_mode"] == "Shotgun"
+                               else self.cfg["spray_percent"]),
+                jump_percent=(self.cfg["shotgun_jump_percent"]
+                              if self.cfg["active_mode"] == "Shotgun"
+                              else self.cfg["jump_percent"]),
+                recovery_ms=self.cfg["recovery_ms"],
+            )
+            predicted_spread = self.reactive_tracker.update(
                 elapsed,
                 focused=self.in_game,
                 mode=self.cfg["active_mode"],
@@ -470,12 +514,32 @@ class CrosshairApp:
                 aiming=self.aim_active,
                 building=self.build_active,
                 enabled=self.cfg["reactive_spread"],
-                tuning=SpreadTuning(
-                    spray_percent=self.cfg["spray_percent"],
-                    jump_percent=self.cfg["jump_percent"],
-                    recovery_ms=self.cfg["recovery_ms"],
-                ),
+                tuning=tuning,
             )
+            active_mode = self.cfg["active_mode"]
+            idle = not (bool(user32.GetAsyncKeyState(0x01) & 0x8000)
+                        or bool(user32.GetAsyncKeyState(0x20) & 0x8000)
+                        or self.aim_active or self.build_active)
+            self.vision_tracker.set_state(
+                focused=self.in_game, mode=active_mode, idle=idle,
+                allowed=(self.cfg["vision_assist"] and self.cfg["overlay_enabled"]
+                         and not self.build_active and not self.aim_active))
+            measured = self.vision_tracker.latest()
+            if (self.cfg["vision_assist"] and measured
+                    and time.monotonic()-measured[0]<.14
+                    and measured[1]==active_mode and measured[2] is not None
+                    and .77<=measured[3]<=1.0):
+                # Vision may be misled by light scenery. Blend moderately and
+                # always fall back to the input model on weak detections.
+                vision_scale = max(.75, min(2.5, float(measured[2])))
+                self.spread_multiplier = predicted_spread*.35 + vision_scale*.65
+                self.vision_state.set(f"Vision: tracking ({measured[3]*100:.0f}% shape confidence)")
+            else:
+                self.spread_multiplier = predicted_spread
+                self.vision_state.set(
+                    "Vision: searching / using input prediction" if self.cfg["vision_assist"]
+                    else "Vision: disabled"
+                )
             if not self.cfg["overlay_enabled"]:
                 self.status.set("Overlay paused - F7 to enable.")
             elif self.cfg["only_in_game"] and not self.in_game:
@@ -485,7 +549,7 @@ class CrosshairApp:
                     self.status.set("GAME CLOSED - launch Creative Destruction (client.exe).")
             elif self.in_game and self.cfg["build_mode_reticle"] and self.build_active:
                 self.status.set("Build mode: circle reticle (E/Esc cancel; 1-5 select weapon).")
-            elif self.in_game and self.cfg["hide_while_aiming"] and self.aim_active:
+            elif self.in_game and self.cfg["hide_while_aiming"] and self.aim_active and self.cfg["active_mode"]=="Sniper":
                 self.status.set("Scoped / aiming - crosshair hidden. Release aim to restore.")
             else:
                 self.status.set(f"Active: {self.cfg['active_mode']} - F6 style / F7 overlay / F8 settings")
