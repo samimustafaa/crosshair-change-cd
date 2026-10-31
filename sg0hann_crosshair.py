@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.0.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.1.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -15,9 +15,10 @@ from ctypes import wintypes
 from pathlib import Path
 from tkinter import colorchooser, messagebox, ttk
 
+from aim_state import AimTracker, crosshair_visible
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -30,6 +31,7 @@ DEFAULTS = {
                      "4": "AR / Sniper", "5": "AR / Sniper"},
     "offset_x": 0, "offset_y": 0, "size": 100, "thickness": 3,
     "only_in_game": True, "overlay_enabled": True,
+    "hide_while_aiming": True, "aim_input": "Hold",
 }
 
 if sys.platform == "win32":
@@ -64,7 +66,7 @@ def config_load() -> dict:
     try:
         raw = json.loads(settings_path().read_text(encoding="utf-8"))
         for key in ("active_mode", "offset_x", "offset_y", "size", "thickness",
-                    "only_in_game", "overlay_enabled"):
+                    "only_in_game", "overlay_enabled", "hide_while_aiming", "aim_input"):
             if key in raw:
                 data[key] = raw[key]
         for mode in MODES:
@@ -89,6 +91,9 @@ def config_load() -> dict:
             data[key] = DEFAULTS[key]
     data["only_in_game"] = bool(data["only_in_game"])
     data["overlay_enabled"] = bool(data["overlay_enabled"])
+    data["hide_while_aiming"] = bool(data["hide_while_aiming"])
+    if data["aim_input"] not in ("Hold", "Toggle"):
+        data["aim_input"] = "Hold"
     return data
 
 
@@ -157,6 +162,8 @@ class CrosshairApp:
         self.cfg = config_load()
         self.down = {key: False for key in self.KEY_CODES}
         self.in_game = False
+        self.aim_tracker = AimTracker()
+        self.aim_active = False
         self.previous_draw = None
         self.save_timer = None
         self.update_busy = False
@@ -187,6 +194,8 @@ class CrosshairApp:
         self.mode_var = tk.StringVar(value=self.cfg["active_mode"])
         self.overlay_var = tk.BooleanVar(value=self.cfg["overlay_enabled"])
         self.only_game_var = tk.BooleanVar(value=self.cfg["only_in_game"])
+        self.hide_ads_var = tk.BooleanVar(value=self.cfg["hide_while_aiming"])
+        self.ads_input_var = tk.StringVar(value=self.cfg["aim_input"])
         self.x_var, self.y_var = tk.IntVar(value=self.cfg["offset_x"]), tk.IntVar(value=self.cfg["offset_y"])
         self.size_var = tk.IntVar(value=self.cfg["size"])
         self.thick_var = tk.IntVar(value=self.cfg["thickness"])
@@ -267,11 +276,21 @@ class CrosshairApp:
         settings.pack(fill=tk.X, pady=(0, 12))
         self.label(settings, "OVERLAY OPTIONS", 11, True).pack(anchor="w", pady=(0, 7))
         for title, value in (("Enable crosshair overlay", self.overlay_var),
-                             ("Show only while game is focused", self.only_game_var)):
+                             ("Show only while game is focused", self.only_game_var),
+                             ("Hide crosshair when aiming / scoped", self.hide_ads_var)):
             tk.Checkbutton(settings, text=title, variable=value,
                            command=self.options_changed, bg=PANEL, fg=TEXT,
                            activebackground=PANEL, activeforeground=TEXT,
                            selectcolor=CARD, font=("Segoe UI", 9)).pack(fill=tk.X, pady=3)
+        aim_row = tk.Frame(settings, bg=PANEL)
+        aim_row.pack(fill=tk.X, pady=(4, 0))
+        self.label(aim_row, "Right-click aim:", 9).pack(side=tk.LEFT)
+        ads_dropdown = ttk.Combobox(aim_row, state="readonly", values=("Hold", "Toggle"),
+                                     textvariable=self.ads_input_var, width=9)
+        ads_dropdown.pack(side=tk.RIGHT)
+        ads_dropdown.bind("<<ComboboxSelected>>", lambda _: self.options_changed())
+        self.label(settings, "Hold: hide while RMB is down. Toggle: hide until next RMB click.",
+                   8, color=MUTED, wraplength=310, justify="left").pack(anchor="w", pady=(5, 0))
 
         mapping = self.card(right)
         mapping.pack(fill=tk.X, pady=(0, 12))
@@ -359,6 +378,14 @@ class CrosshairApp:
     def options_changed(self):
         self.cfg["overlay_enabled"] = self.overlay_var.get()
         self.cfg["only_in_game"] = self.only_game_var.get()
+        self.cfg["hide_while_aiming"] = self.hide_ads_var.get()
+        selected_aim_mode = self.ads_input_var.get()
+        if selected_aim_mode not in ("Hold", "Toggle"):
+            selected_aim_mode = "Hold"
+        if self.cfg["aim_input"] != selected_aim_mode:
+            self.aim_tracker.reset()
+            self.aim_active = False
+        self.cfg["aim_input"] = selected_aim_mode
         self.cfg["offset_x"] = self.bounded(self.x_var, 0, -500, 500)
         self.cfg["offset_y"] = self.bounded(self.y_var, 0, -500, 500)
         self.cfg["size"] = self.bounded(self.size_var, 100, 50, 200)
@@ -375,7 +402,9 @@ class CrosshairApp:
         self.save_timer = self.window.after(450, lambda: config_save(self.cfg))
 
     def render(self, force=False):
-        visible = self.cfg["overlay_enabled"] and (self.in_game or not self.cfg["only_in_game"])
+        visible = crosshair_visible(
+            self.cfg["overlay_enabled"], self.in_game, self.cfg["only_in_game"],
+            self.cfg["hide_while_aiming"], self.aim_active)
         state = (visible, self.cfg["active_mode"], self.cfg["colors"][self.cfg["active_mode"]],
                  self.cfg["offset_x"], self.cfg["offset_y"], self.cfg["size"], self.cfg["thickness"])
         if not force and state == self.previous_draw:
@@ -393,6 +422,10 @@ class CrosshairApp:
         self.mode_var.set(self.cfg["active_mode"])
         self.overlay_var.set(self.cfg["overlay_enabled"])
         self.only_game_var.set(self.cfg["only_in_game"])
+        self.hide_ads_var.set(self.cfg["hide_while_aiming"])
+        self.ads_input_var.set(self.cfg["aim_input"])
+        self.aim_tracker.reset()
+        self.aim_active = False
         self.x_var.set(0)
         self.y_var.set(0)
         self.size_var.set(100)
@@ -421,6 +454,9 @@ class CrosshairApp:
     def poll(self):
         try:
             self.in_game = game_focused()
+            self.aim_active = self.aim_tracker.update(
+                self.in_game, bool(user32.GetAsyncKeyState(0x02) & 0x8000),
+                self.cfg["aim_input"])
             for name, code in self.KEY_CODES.items():
                 pressed = bool(user32.GetAsyncKeyState(code) & 0x8000)
                 if pressed and not self.down[name]:
@@ -439,10 +475,12 @@ class CrosshairApp:
                 self.status.set("Overlay paused - F7 to enable.")
             elif self.cfg["only_in_game"] and not self.in_game:
                 self.status.set("Waiting for Creative Destruction (client.exe)...")
+            elif self.in_game and self.cfg["hide_while_aiming"] and self.aim_active:
+                self.status.set("Scoped / aiming - crosshair hidden. Release aim to restore.")
             else:
                 self.status.set(f"Active: {self.cfg['active_mode']} - F6 style / F7 overlay / F8 settings")
             self.render()
-            self.root.after(65, self.poll)
+            self.root.after(30, self.poll)
         except tk.TclError:
             pass
 
