@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.1.0.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.1.1.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -23,7 +23,7 @@ from reactive_spread import ReactiveSpread, SpreadTuning
 from vision_assist import VisionAssist
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -38,7 +38,7 @@ DEFAULTS = {
     "only_in_game": True, "overlay_enabled": True,
     "hide_while_aiming": True, "aim_input": "Hold",
     "build_mode_reticle": True,
-    "reactive_spread": True, "spray_percent": 85,
+    "reactive_spread": True, "spray_percent": 95,
     "jump_percent": 36, "recovery_ms": 320,
     "shotgun_spray_percent": 18, "shotgun_jump_percent": 22,
     "ar_ads_percent": 72, "shotgun_ads_percent": 78,
@@ -175,7 +175,7 @@ def draw_reticle(canvas, x, y, mode, color, scale, line_width, tag="reticle", sp
                            outline=color, width=line_width, tags=(tag,))
     else:
         gap = (spread - 1.0) * 20 * scale
-        near, far = max(2.5*scale,18*scale + gap), max(14*scale,32*scale + gap)
+        near, far = max(2.5*scale,20*scale + gap), max(14*scale,33*scale + gap)
         for x1, y1, x2, y2 in (
             (x-far, y, x-near, y), (x+near, y, x+far, y),
             (x, y-far, x, y-near), (x, y+near, x, y+far),
@@ -330,7 +330,7 @@ class CrosshairApp:
             self.build_active = False
         self.cfg["hide_while_aiming"] = self.hide_ads_var.get()
         self.cfg["reactive_spread"] = self.reactive_var.get()
-        self.cfg["spray_percent"] = self.bounded(self.spray_var, 85, 0, 180)
+        self.cfg["spray_percent"] = self.bounded(self.spray_var, 95, 0, 180)
         self.cfg["jump_percent"] = self.bounded(self.jump_var, 55, 0, 140)
         self.cfg["recovery_ms"] = self.bounded(self.recovery_var, 320, 100, 1500)
         self.cfg["shotgun_spray_percent"] = self.bounded(self.shotgun_spray_var, 18, 0, 100)
@@ -434,6 +434,15 @@ class CrosshairApp:
             self.window.focus_force()
         else:
             self.hide()
+
+    def apply_video_reference(self):
+        """Calibrate only AR reference geometry/exaggeration from the supplied clip."""
+        self.spray_var.set(95)
+        self.options_changed()
+        self.status.set(
+            "Applied video reference: AR 20–33 px idle; 39–52 px expanded. "
+            "Shotgun and ADS values unchanged."
+        )
 
     def reset_vision_baseline(self):
         self.vision_tracker.reset()
