@@ -326,6 +326,12 @@ def create_gameplay_page(app, parent):
             bd=0, sliderrelief="flat", sliderlength=15,
             width=8, command=lambda _v: on_scale(app)
         ).pack(fill="x")
+    action(reactive, "Apply AR values measured from your video",
+           app.apply_video_reference, primary=True).pack(anchor="w", pady=(12, 2))
+    label(reactive, "AR reference at 1920×1080: idle marks 20–33 px from center; "
+          "expanded marks 39–52 px. This changes only AR spraying, not "
+          "shotgun jump, because the clip does not isolate that input.",
+          9, MUTED, wraplength=430, justify="left").pack(anchor="w", pady=(1, 7))
     action(reactive, "Preview spray + jump →",
            lambda: test_spread_preview(app), primary=True).pack(anchor="w", pady=(12, 3))
     label(reactive, "Input-based bloom is still approximate; the white HUD may expand "
