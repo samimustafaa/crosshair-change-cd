@@ -22,7 +22,7 @@ jobs:
           python-version: '3.12'
 
       - name: Check Python syntax
-        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py
+        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py
 
       - name: Test aim, build and crosshair behavior
         run: python -m unittest discover -s tests -v
