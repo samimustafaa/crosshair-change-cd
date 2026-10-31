@@ -17,73 +17,96 @@ import numpy as np
 MIN_CONFIDENCE = 0.77
 
 
-def _sample_white(rgb: np.ndarray, x: float, y: float, thickness: int = 2) -> float:
-    h, w, _ = rgb.shape
+def _sample_luma(gray: np.ndarray, x: float, y: float) -> float:
     x, y = int(round(x)), int(round(y))
-    if x < thickness or y < thickness or x + thickness >= w or y + thickness >= h:
+    h, w = gray.shape
+    if x < 2 or y < 2 or x + 2 >= w or y + 2 >= h:
         return 0.0
-    block = rgb[y-thickness:y+thickness+1, x-thickness:x+thickness+1]
-    hi = block.max(axis=2).astype(np.int16)
-    lo = block.min(axis=2).astype(np.int16)
-    bright = (lo > 187) & (hi-lo < 38)
-    return float(np.mean(bright))
+    return float(gray[y-1:y+2, x-1:x+2].mean())
 
 
-def _ring_score(rgb: np.ndarray, r: float, center: tuple[float,float]) -> float:
-    cx,cy = center
-    # Cardinal-quarter arcs (the shotgun's four-part circle).
-    points=[]
-    for deg in (0, 12, -12, 90, 78, 102, 180,168,192,270,258,282):
-        rad=math.radians(deg)
-        x,y=cx+math.cos(rad)*r,cy+math.sin(rad)*r
-        on = _sample_white(rgb,x,y)
-        off = max(_sample_white(rgb,x+math.cos(rad)*8,y+math.sin(rad)*8),
-                  _sample_white(rgb,x-math.cos(rad)*8,y-math.sin(rad)*8))
-        points.append(max(0.0,on-.65*off))
-    # Require evidence across multiple arcs; no single bright area should win.
-    groups=[sum(points[i:i+3])/3 for i in range(0,12,3)]
-    if sum(v>.35 for v in groups)<3:
+def _neutral_white(rgb: np.ndarray, x: float, y: float) -> bool:
+    """Reject colored overlays/muzzle flashes; inspect only whitish HUD marks."""
+    x, y = int(round(x)), int(round(y))
+    if x < 2 or y < 2 or x+2 >= rgb.shape[1] or y+2 >= rgb.shape[0]:
+        return False
+    patch = rgb[y-1:y+2, x-1:x+2, :3].mean(axis=(0, 1))
+    return float(patch.min()) > 165 and float(patch.max()-patch.min()) < 55
+
+
+def _ring_score(rgb: np.ndarray, gray: np.ndarray, radius: float,
+                center: tuple[float, float]) -> float:
+    cx, cy = center
+    groups = []
+    for cardinal in (0, 90, 180, 270):
+        contrast = []
+        for delta in (-13, -8, -3, 3, 8, 13):
+            angle = math.radians(cardinal + delta)
+            dx, dy = math.cos(angle), math.sin(angle)
+            x, y = cx + dx * radius, cy + dy * radius
+            if not _neutral_white(rgb, x, y):
+                contrast.append(0.0)
+                continue
+            on = _sample_luma(gray, x, y)
+            away = (_sample_luma(gray, x+dx*6, y+dy*6)
+                    + _sample_luma(gray, x-dx*6, y-dy*6)) / 2
+            contrast.append(max(0.0, on-away))
+        groups.append(sum(contrast)/len(contrast))
+    # Require multiple arc components; a single bright shape should not qualify.
+    if sum(v > 12.0 for v in groups) < 3:
         return 0.0
-    return min(1.0,sum(groups)/4/.70)
+    return min(1.0, float(statistics.median(groups)) / 28.0)
 
 
-def _cross_score(rgb: np.ndarray, r: float, center: tuple[float,float]) -> float:
-    cx,cy=center
-    group=[]
-    for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
-        along=[_sample_white(rgb,cx+dx*(r+t),cy+dy*(r+t),1)
-               for t in (-2,0,2,4)]
-        lateral=[_sample_white(rgb,cx+dx*(r+t)+dy*7,
-                               cy+dy*(r+t)+dx*7,1)
-                 for t in (-2,0,2,4)]
-        group.append(max(0.0,sum(along)/4 - .6*sum(lateral)/4))
-    if sum(v>.32 for v in group)<3:
+def _cross_score(rgb: np.ndarray, gray: np.ndarray, radius: float,
+                 center: tuple[float, float]) -> float:
+    cx, cy = center
+    groups = []
+    for dx, dy in ((1,0), (-1,0), (0,1), (0,-1)):
+        contrast = []
+        for delta in (1,3,5,7,9,11):
+            x, y = cx+dx*(radius+delta), cy+dy*(radius+delta)
+            if not _neutral_white(rgb, x, y):
+                contrast.append(0.0)
+                continue
+            on = _sample_luma(gray, x, y)
+            # True HUD bars are thin; compare with nearby perpendicular pixels.
+            side = (_sample_luma(gray, x+dy*10, y+dx*10)
+                    + _sample_luma(gray, x-dy*10, y-dx*10)) / 2
+            contrast.append(max(0.0, on-side))
+        groups.append(sum(contrast)/len(contrast))
+    if min(groups) < 12.0 or max(groups) > min(groups)*1.85:
         return 0.0
-    return min(1.0,sum(group)/4/.65)
+    return min(1.0, float(statistics.median(groups))/27.0)
 
 
 def estimate_native_radius(rgb: np.ndarray, mode: str) -> tuple[float, float] | None:
-    """Returns (radius, confidence), only for strongly symmetric white HUD shapes.
+    """Estimate native shotgun radius or AR inner bar gap from a centered crop.
 
-    Args: RGB center crop 180-300px square, ideally overlay colored (not white).
+    Uses local shape contrast on bright and dark backgrounds. Rejects colored
+    overlays and high-asymmetry screen features; falls back when uncertain.
     """
-    if rgb.ndim!=3 or rgb.shape[2]<3 or min(rgb.shape[:2])<100:
+    if rgb.ndim != 3 or rgb.shape[2] < 3 or min(rgb.shape[:2]) < 100:
         return None
-    cx,cy=(rgb.shape[1]-1)/2,(rgb.shape[0]-1)/2
+    cx, cy = (rgb.shape[1]-1)/2, (rgb.shape[0]-1)/2
+    gray = (rgb[:, :, 0].astype(np.float32)*.299
+            + rgb[:, :, 1].astype(np.float32)*.587
+            + rgb[:, :, 2].astype(np.float32)*.114)
     scorer = _ring_score if mode=="Shotgun" else _cross_score
-    candidates=[]
-    for r in range(13, min(rgb.shape[:2])//2 - 12):
-        score=scorer(rgb,r,(cx,cy))
-        if score>=MIN_CONFIDENCE:
-            candidates.append((r,score))
-    if not candidates:
+    max_radius = min(76, min(rgb.shape[:2])//2-13)
+    candidates = [(r, scorer(rgb, gray, r, (cx,cy)))
+                  for r in range(14, max_radius)]
+    good = [p for p in candidates if p[1] >= MIN_CONFIDENCE]
+    if not good:
         return None
-    # Favor complete strong symmetrical grouping over peripheral bright scenery.
-    radius,confidence=max(candidates,key=lambda p:(p[1], -abs(p[0]-35)*.0002))
-    if confidence < MIN_CONFIDENCE:
-        return None
-    return float(radius), float(confidence)
-
+    if mode == "Shotgun":
+        radius, conf = max(good, key=lambda p:p[1])
+    else:
+        peak=max(s for _,s in good)
+        # On AR we need the *start* of each bar, not its midpoint.
+        threshold=max(MIN_CONFIDENCE,peak*.90)
+        radius, conf = min((r,s) for r,s in good if s>=threshold)
+    return float(radius), float(conf)
 
 class VisionBaseline:
     """Learning idle reticle radius only when stable, gun exposed, no ADS."""
