@@ -217,7 +217,7 @@ def create_crosshair_page(app, parent):
     header(modes, "01  /  RETICLE", "Crosshair styles", "Choose a weapon style and set its own color.")
     list_area = tk.Frame(modes, bg=PANEL)
     list_area.pack(fill="x", pady=(12, 0))
-    for mode in ("Shotgun", "AR / Sniper", "Pickaxe"):
+    for mode in ("Shotgun", "AR / Sniper", "Sniper", "Pickaxe"):
         tile = tk.Frame(list_area, bg=CARD, height=62, padx=12,
                         highlightthickness=1, highlightbackground=BORDER)
         tile.pack(fill="x", pady=3)
@@ -275,8 +275,8 @@ def create_gameplay_page(app, parent):
         ("Enable overlay", app.overlay_var, "Show the colored crosshair."),
         ("Show only in Creative Destruction", app.only_game_var,
          "Hide automatically when another window is focused."),
-        ("Hide when scoped / aiming", app.hide_ads_var,
-         "Right-click ADS removes the stationary reticle."),
+        ("Hide when sniper scoped", app.hide_ads_var,
+         "Sniper scopes hide the overlay; AR and shotgun ADS shrink."),
         ("Build-mode circular reticle", app.build_reticle_var,
          "Show pickaxe-style circle when switching to builds."),
     )
@@ -305,7 +305,9 @@ def create_gameplay_page(app, parent):
     ).pack(anchor="w", pady=(12, 5))
     for title, var, lower, upper, suffix in (
         ("AR spray expansion", app.spray_var, 0, 180, "%"),
-        ("Jump expansion", app.jump_var, 0, 140, "%"),
+        ("AR jump expansion", app.jump_var, 0, 140, "%"),
+        ("Shotgun firing expansion", app.shotgun_spray_var, 0, 100, "%"),
+        ("Shotgun jump expansion", app.shotgun_jump_var, 0, 100, "%"),
         ("Recovery time", app.recovery_var, 100, 1500, " ms"),
     ):
         row = tk.Frame(reactive, bg=PANEL)
@@ -326,13 +328,58 @@ def create_gameplay_page(app, parent):
         ).pack(fill="x")
     action(reactive, "Preview spray + jump →",
            lambda: test_spread_preview(app), primary=True).pack(anchor="w", pady=(12, 3))
-    label(reactive, "Approximates native bloom; the white HUD may expand differently. "
-          "Does not affect builds, pickaxe, or scoped aiming.", 9, MUTED,
+    label(reactive, "Input-based bloom is still approximate; the white HUD may expand "
+          "differently. Building/pickaxe reticles never expand.", 9, MUTED,
           wraplength=430, justify="left").pack(anchor="w", pady=(8, 0))
+
+    vision = card(parent)
+    vision.pack(fill="x", pady=(0, 14))
+    header(vision, "03  /  VISION ASSIST  ·  EXPERIMENTAL",
+           "Track the original reticle",
+           "Reads a small screen-center crop, searches for symmetric white HUD "
+           "lines or rings, and blends measurements only when confidence is high.")
+    tk.Checkbutton(
+        vision, text="Enable experimental vision assistance",
+        variable=app.vision_var, command=app.options_changed,
+        bg=PANEL, fg=TEXT, selectcolor=CARD,
+        activebackground=PANEL, activeforeground=TEXT,
+        font=(FONT, 10, "bold"), relief="flat", bd=0
+    ).pack(anchor="w", pady=(12, 5))
+    label(vision, "", 9, ACCENT,
+          textvariable=app.vision_state, wraplength=420).pack(anchor="w")
+    label(vision, "Calibrate automatically: hold a gun unzoomed and stand still "
+          "with the original white crosshair visible for a moment. Use a colored "
+          "overlay (not pure white). Scenes with bright textures may fool detection. "
+          "No measured 97% accuracy claim.", 9, MUTED, wraplength=435,
+          justify="left").pack(anchor="w", pady=(7, 0))
+    action(vision, "Reset visual baseline",
+           app.reset_vision_baseline).pack(anchor="w", pady=(10,0))
+
+    ads_tuning = card(parent)
+    ads_tuning.pack(fill="x", pady=(0, 14))
+    header(ads_tuning, "04  /  AIMING", "ARS + Shotgun ADS shrink",
+           "Right mouse zoom reduces spread; sniper scope stays hidden.")
+    for title, var in (
+        ("AR ADS reticle size", app.ar_ads_var),
+        ("Shotgun ADS reticle size", app.shotgun_ads_var),
+    ):
+        row = tk.Frame(ads_tuning, bg=PANEL)
+        row.pack(fill="x", pady=(8,1))
+        text_row = tk.Frame(row,bg=PANEL)
+        text_row.pack(fill="x")
+        label(text_row,title,10,TEXT,True).pack(side="left")
+        value=tk.StringVar(value=f"{var.get()}%")
+        app.reactive_labels.append((var,value,"%"))
+        label(text_row,"",9,ACCENT,True,textvariable=value).pack(side="right")
+        tk.Scale(row,from_=40,to=100,orient="horizontal",resolution=1,
+                 variable=var,showvalue=False,bg=PANEL,fg=TEXT,troughcolor=CARD,
+                 activebackground=ACCENT,highlightthickness=0,bd=0,
+                 sliderrelief="flat",width=8,command=lambda _v: on_scale(app)).pack(fill="x")
+
 
     ads = card(parent)
     ads.pack(fill="x", pady=(0, 14))
-    header(ads, "03  /  ADS", "Right-click behavior",
+    header(ads, "05  /  INPUT", "Right-click behavior",
            "Choose the same aiming mode you use in-game.")
     selection = tk.Frame(ads, bg=PANEL)
     selection.pack(fill="x", pady=(12, 0))
@@ -344,7 +391,7 @@ def create_gameplay_page(app, parent):
 
     mapping = card(parent)
     mapping.pack(fill="x")
-    header(mapping, "04  /  BINDS", "Weapon slot mapping",
+    header(mapping, "06  /  BINDS", "Weapon slot mapping",
            "Your 1–5 keys select the corresponding reticle.")
     grid = tk.Frame(mapping, bg=PANEL)
     grid.pack(fill="x", pady=(12, 0))
@@ -352,7 +399,7 @@ def create_gameplay_page(app, parent):
         cell = tk.Frame(grid, bg=PANEL)
         cell.pack(fill="x", pady=3)
         label(cell, f"Slot  {key}", 10, TEXT, True).pack(side="left")
-        cb = ttk.Combobox(cell, values=("Shotgun", "AR / Sniper", "Pickaxe"),
+        cb = ttk.Combobox(cell, values=("Shotgun", "AR / Sniper", "Sniper", "Pickaxe"),
                           textvariable=app.slots[key], state="readonly", width=17,
                           style="Crosshair.TCombobox")
         cb.pack(side="right")
@@ -394,7 +441,10 @@ def choose_aim(app, mode):
 
 
 def test_spread_preview(app):
-    app.preview_test_multiplier = 1.0 + (app.cfg["spray_percent"] + app.cfg["jump_percent"])/100.0
+    shotgun=app.cfg["active_mode"]=="Shotgun"
+    fire=app.cfg["shotgun_spray_percent"] if shotgun else app.cfg["spray_percent"]
+    jump=app.cfg["shotgun_jump_percent"] if shotgun else app.cfg["jump_percent"]
+    app.preview_test_multiplier = 1.0 + (fire + jump)/100.0
     refresh_interface(app)
     if getattr(app, "spread_preview_job", None):
         app.window.after_cancel(app.spread_preview_job)
