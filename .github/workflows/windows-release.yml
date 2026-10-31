@@ -38,8 +38,19 @@ jobs:
       - name: Install PyInstaller
         run: python -m pip install --disable-pip-version-check pyinstaller
 
-      - name: Build standalone crosshair EXE
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name sg0hann-Crosshair sg0hann_crosshair.py
+      - name: Build crosshair app with installed Python runtime
+        run: python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name sg0hann-Crosshair sg0hann_crosshair.py
+
+      - name: Smoke test bundled app and Python DLL
+        shell: pwsh
+        run: |
+          $exe = 'dist/sg0hann-Crosshair/sg0hann-Crosshair.exe'
+          $dll = 'dist/sg0hann-Crosshair/_internal/python312.dll'
+          if (!(Test-Path $exe)) { throw 'Bundled crosshair executable is missing' }
+          if (!(Test-Path $dll)) { throw 'Bundled Python 3.12 DLL is missing' }
+          $process = Start-Process -FilePath (Resolve-Path $exe) -ArgumentList '--self-test' -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Bundled app smoke test failed with code $($process.ExitCode)" }
+
 
       - name: Install Inno Setup
         shell: pwsh
@@ -59,12 +70,17 @@ jobs:
           $hash = (Get-FileHash 'dist/sg0hann-Crosshair-Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  sg0hann-Crosshair-Setup.exe" | Set-Content -Path 'dist/SHA256SUMS.txt' -Encoding ascii
 
-      - name: Upload EXE and installer as workflow artifacts
+      - name: Package portable folder with Python runtime
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'dist/sg0hann-Crosshair/*' -DestinationPath 'dist/sg0hann-Crosshair-Portable.zip' -CompressionLevel Optimal
+
+      - name: Upload installer and portable folder as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sg0hann-Crosshair-Windows
           path: |
-            dist/sg0hann-Crosshair.exe
+            dist/sg0hann-Crosshair-Portable.zip
             dist/sg0hann-Crosshair-Setup.exe
             dist/SHA256SUMS.txt
           if-no-files-found: error
@@ -80,6 +96,6 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists. Bump VERSION to publish the next update."
           } else {
-            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair.exe' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "Windows standalone EXE + one-app installer. Built from the main branch. Startup and manual update checks included. SHA256 verified updates."
+            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair-Portable.zip' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "Windows installer + complete portable folder ZIP with local Python runtime. Fixes the PyInstaller one-file temporary _MEI/python312.dll loading failure. Startup/manual update checks and SHA256 verification remain supported."
             if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
           }
