@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.2.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.3.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -19,7 +19,7 @@ from aim_state import AimTracker, crosshair_visible
 from build_state import BuildTracker, displayed_reticle
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -193,8 +193,8 @@ class CrosshairApp:
         self.window = tk.Toplevel(self.root)
         self.window.title(f"{APP_NAME}  v{VERSION}")
         self.window.configure(bg=BG)
-        self.window.geometry("760x815")
-        self.window.minsize(730, 780)
+        self.window.geometry("1180x772")
+        self.window.resizable(False, False)
         self.window.protocol("WM_DELETE_WINDOW", self.hide)
         self.window.attributes("-topmost", True)
         self.window.after(1000, lambda: self.window.attributes("-topmost", False))
@@ -212,6 +212,8 @@ class CrosshairApp:
         self.status = tk.StringVar(value="Ready - focus Creative Destruction to see the overlay.")
         self.update_status = tk.StringVar(value=f"App version {VERSION} - GitHub Releases")
         self.previews, self.color_buttons = {}, {}
+        self.version = VERSION
+        self.draw_reticle = draw_reticle
         self.create_ui()
         self.refresh_previews()
         self.poll()
@@ -238,123 +240,8 @@ class CrosshairApp:
         return tk.Frame(parent, bg=PANEL, padx=12, pady=12)
 
     def create_ui(self):
-        header = tk.Frame(self.window, bg=BG, padx=22, pady=16)
-        header.pack(fill=tk.X)
-        self.label(header, "SG0HANN  /  CROSSHAIR LAB", 10, True, ACCENT).pack(anchor="w")
-        self.label(header, "Make your crosshair yours.", 20, True).pack(anchor="w", pady=(4, 0))
-        self.label(header, "Lightweight click-through overlay  •  No game file edits",
-                   9, color=MUTED).pack(anchor="w", pady=(2, 0))
-
-        bottom = tk.Frame(self.window, bg=BG, padx=20, pady=10)
-        bottom.pack(side=tk.BOTTOM, fill=tk.X)
-
-        columns = tk.Frame(self.window, bg=BG, padx=20)
-        columns.pack(fill=tk.BOTH, expand=True)
-        left = tk.Frame(columns, bg=BG)
-        right = tk.Frame(columns, bg=BG)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
-        right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(8, 0))
-
-        colors = self.card(left)
-        colors.pack(fill=tk.X, pady=(0, 12))
-        self.label(colors, "CROSSHAIR COLORS", 11, True).pack(anchor="w", pady=(0, 7))
-        for mode in MODES:
-            row = tk.Frame(colors, bg=PANEL)
-            row.pack(fill=tk.X, pady=4)
-            preview = tk.Canvas(row, bg=CARD, width=78, height=70, highlightthickness=0)
-            preview.pack(side=tk.LEFT)
-            self.previews[mode] = preview
-            description = tk.Frame(row, bg=PANEL)
-            description.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0))
-            self.label(description, mode, 10, True).pack(anchor="w")
-            choice = self.button(description, "Choose color", lambda m=mode: self.pick_color(m))
-            choice.pack(anchor="w", pady=(4, 0))
-            self.color_buttons[mode] = choice
-
-        selection = self.card(left)
-        selection.pack(fill=tk.X)
-        self.label(selection, "ACTIVE RETICLE", 11, True).pack(anchor="w", pady=(0, 8))
-        dropdown = ttk.Combobox(selection, state="readonly", values=MODES,
-                                textvariable=self.mode_var)
-        dropdown.pack(fill=tk.X)
-        dropdown.bind("<<ComboboxSelected>>", lambda _: self.set_mode(self.mode_var.get()))
-        self.label(selection, "F6: change style   •   F7: toggle   •   F8: settings",
-                   9, color=MUTED, wraplength=310).pack(anchor="w", pady=(9, 0))
-
-        settings = self.card(right)
-        settings.pack(fill=tk.X, pady=(0, 12))
-        self.label(settings, "OVERLAY OPTIONS", 11, True).pack(anchor="w", pady=(0, 7))
-        for title, value in (("Enable crosshair overlay", self.overlay_var),
-                             ("Show only while game is focused", self.only_game_var),
-                             ("Hide crosshair when aiming / scoped", self.hide_ads_var),
-                             ("Circle crosshair when building", self.build_reticle_var)):
-            tk.Checkbutton(settings, text=title, variable=value,
-                           command=self.options_changed, bg=PANEL, fg=TEXT,
-                           activebackground=PANEL, activeforeground=TEXT,
-                           selectcolor=CARD, font=("Segoe UI", 9)).pack(fill=tk.X, pady=3)
-        aim_row = tk.Frame(settings, bg=PANEL)
-        aim_row.pack(fill=tk.X, pady=(4, 0))
-        self.label(aim_row, "Right-click aim:", 9).pack(side=tk.LEFT)
-        ads_dropdown = ttk.Combobox(aim_row, state="readonly", values=("Hold", "Toggle"),
-                                     textvariable=self.ads_input_var, width=9)
-        ads_dropdown.pack(side=tk.RIGHT)
-        ads_dropdown.bind("<<ComboboxSelected>>", lambda _: self.options_changed())
-        self.label(settings, "Hold: hide while RMB is down. Toggle: hide until next RMB click.",
-                   8, color=MUTED, wraplength=310, justify="left").pack(anchor="w", pady=(5, 0))
-        self.label(settings, "Build: F / X / C / H / F4  |  Cancel: E / Esc  |  Weapon: 1-5",
-                   8, color=MUTED, wraplength=310, justify="left").pack(anchor="w", pady=(5, 0))
-
-        mapping = self.card(right)
-        mapping.pack(fill=tk.X, pady=(0, 12))
-        self.label(mapping, "WEAPON SLOT SWITCHING", 11, True).pack(anchor="w", pady=(0, 5))
-        self.label(mapping, "Press your in-game 1-5 slot keys.",
-                   9, color=MUTED).pack(anchor="w", pady=(0, 6))
-        for number in "12345":
-            row = tk.Frame(mapping, bg=PANEL)
-            row.pack(fill=tk.X, pady=2)
-            self.label(row, f"Slot {number}", 9).pack(side=tk.LEFT)
-            dropdown = ttk.Combobox(row, state="readonly", values=MODES,
-                                    textvariable=self.slots[number], width=16)
-            dropdown.pack(side=tk.RIGHT)
-            dropdown.bind("<<ComboboxSelected>>", lambda _: self.options_changed())
-
-        align = self.card(right)
-        align.pack(fill=tk.X)
-        self.label(align, "SIZE & ALIGNMENT", 11, True).pack(anchor="w", pady=(0, 8))
-        for title, var, lower, upper in (
-            ("Horizontal", self.x_var, -500, 500),
-            ("Vertical", self.y_var, -500, 500),
-            ("Size %", self.size_var, 50, 200),
-            ("Thickness", self.thick_var, 2, 8),
-        ):
-            row = tk.Frame(align, bg=PANEL)
-            row.pack(fill=tk.X, pady=3)
-            self.label(row, title, 9).pack(side=tk.LEFT)
-            inp = tk.Spinbox(row, from_=lower, to=upper, textvariable=var, width=6,
-                             bg=CARD, fg=TEXT, buttonbackground=CARD,
-                             insertbackground=TEXT, relief=tk.FLAT, justify="center",
-                             command=self.options_changed)
-            inp.pack(side=tk.RIGHT)
-            inp.bind("<KeyRelease>", lambda _: self.options_changed())
-
-        updates = self.card(bottom)
-        updates.pack(fill=tk.X, pady=(0, 9))
-        self.label(updates, "UPDATES", 11, True).pack(anchor="w")
-        self.label(updates, "", 9, color=MUTED,
-                   textvariable=self.update_status).pack(side=tk.LEFT, anchor="w")
-        self.update_button = self.button(
-            updates, "Check for Updates", lambda: self.check_updates(silent=False), bg="#2B5B94")
-        self.update_button.pack(side=tk.RIGHT)
-
-        self.label(bottom, "TIP: Borderless-windowed mode works best. The original white crosshair stays underneath.",
-                   9, color=MUTED, wraplength=690).pack(anchor="w", pady=(0, 7))
-        controls = tk.Frame(bottom, bg=BG)
-        controls.pack(fill=tk.X)
-        self.button(controls, "Hide settings", self.hide, bg="#2B5B94").pack(side=tk.LEFT)
-        self.button(controls, "Reset defaults", self.reset).pack(side=tk.LEFT, padx=8)
-        self.button(controls, "Quit", self.quit).pack(side=tk.RIGHT)
-        self.label(bottom, "", 9, color=ACCENT,
-                   textvariable=self.status).pack(anchor="w", pady=(7, 0))
+        from interface import build_interface
+        build_interface(self)
 
     def pick_color(self, mode):
         choice = colorchooser.askcolor(color=self.cfg["colors"][mode],
@@ -366,11 +253,8 @@ class CrosshairApp:
             self.save_later()
 
     def refresh_previews(self):
-        for mode, canvas in self.previews.items():
-            canvas.delete("all")
-            color = self.cfg["colors"][mode]
-            draw_reticle(canvas, 39, 35, mode, color, .65, 2)
-            self.color_buttons[mode].configure(text=color)
+        from interface import refresh_interface
+        refresh_interface(self)
 
     def set_mode(self, mode):
         if mode not in MODES:
@@ -378,6 +262,7 @@ class CrosshairApp:
         self.cfg["active_mode"] = mode
         self.mode_var.set(mode)
         self.render(True)
+        self.refresh_previews()
         self.save_later()
 
     @staticmethod
@@ -410,6 +295,7 @@ class CrosshairApp:
             if value.get() in MODES:
                 self.cfg["slot_mapping"][number] = value.get()
         self.render(True)
+        self.refresh_previews()
         self.save_later()
 
     def save_later(self):
