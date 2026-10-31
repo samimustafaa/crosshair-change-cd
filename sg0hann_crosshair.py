@@ -1,4 +1,4 @@
-"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.3.
+"""sg0hann Crosshair Color Lab - Windows click-through overlay, v1.0.4.
 
 No game-file modification, injection, or anti-cheat bypass.
 """
@@ -19,7 +19,7 @@ from aim_state import AimTracker, crosshair_visible
 from build_state import BuildTracker, displayed_reticle
 from updater import download_verified_installer, find_update, launch_installer
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 APP_NAME = "sg0hann Crosshair Color Lab"
 TRANSPARENT = "#010203"
 BG, PANEL, CARD = "#111419", "#1B2028", "#242B35"
@@ -479,6 +479,14 @@ def main():
         print("Windows 10/11 required.", file=sys.stderr)
         return 1
     try:
+        if "--self-test" in sys.argv:
+            # CI verifies that the packaged executable can load the installed
+            # Python DLL and initialize Tk without starting the overlay.
+            test_window = tk.Tk()
+            test_window.withdraw()
+            test_window.update_idletasks()
+            test_window.destroy()
+            return 0
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
         except (AttributeError, OSError):
