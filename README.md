@@ -52,3 +52,9 @@ To recover from an existing startup error:
 5. If a DLL still fails to load after a full install, check Windows Security Protection History for quarantined runtime files and the official Microsoft Visual C++ Redistributable x64 prerequisites. Do not disable antivirus or add broad exclusions.
 
 For silent in-app updates, the installer closes the existing application, installs all files, and launches the updated copy after installation; it avoids restarting an old version before copying the new runtime.
+
+## Native Lab — experimental only (v1.0.5)
+
+The new **Native Lab** sidebar page opens a user-selected local `ui1.npk`, previews four indexed visual candidates (white ring, three-arc ring, alternate ring, segmented ring), recolors white pixels into user-chosen colors, and exports PNG images. An optional explicit-consent button produces a **separate experimental NPK copy** and reads its modified asset back to confirm archive consistency. The original archive and game installation are never modified by the app.
+
+**Important:** The candidate file IDs are not proven to control combat crosshairs, and this archive's two unknown hash fields are not recalculated. In-game use and archive integrity compatibility are **unverified**. Do not replace your game files or use a modified NPK online based only on this copy. No anti-cheat bypass is attempted. The previously working external overlay is still the default functional crosshair customization method.
