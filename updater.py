@@ -94,9 +94,8 @@ def download_verified_installer(release: dict) -> Path:
 def launch_installer(installer: Path) -> None:
     if sys.platform != "win32":
         raise RuntimeError("Updating requires Windows.")
-    subprocess.Popen(
-        [str(installer), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-         "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+    # The installer itself starts the fully installed app after copying all DLLs.\n    # Never let Restart Manager relaunch the old EXE mid-install.\n    subprocess.Popen(\n        [str(installer), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+         "/CLOSEAPPLICATIONS", "/NORESTARTAPPLICATIONS"],
         creationflags=0x00000008,  # DETACHED_PROCESS
         close_fds=True,
     )
