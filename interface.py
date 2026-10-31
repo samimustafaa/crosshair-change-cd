@@ -79,6 +79,7 @@ def build_interface(app):
     app.color_buttons = {}
     app.previews = {}
     app.scale_labels = {}
+    app.reactive_labels = []
 
     shell = tk.Frame(w, bg=BG)
     shell.pack(fill="both", expand=True)
@@ -290,9 +291,48 @@ def create_gameplay_page(app, parent):
         switch.pack(anchor="w")
         label(row, desc, 9, MUTED).pack(anchor="w", padx=25)
 
+    reactive = card(parent)
+    reactive.pack(fill="x", pady=(0, 14))
+    header(reactive, "02  /  REACTIVE SPREAD", "Spray & jump tracking",
+           "Fast input-based approximation: LMB expands the gun reticle, "
+           "Space adds jump spread. No game memory or screen capture.")
+    tk.Checkbutton(
+        reactive, text="Enable reactive crosshair spread",
+        variable=app.reactive_var, command=app.options_changed,
+        bg=PANEL, fg=TEXT, selectcolor=CARD,
+        activebackground=PANEL, activeforeground=TEXT,
+        font=(FONT, 10, "bold"), relief="flat", bd=0
+    ).pack(anchor="w", pady=(12, 5))
+    for title, var, lower, upper, suffix in (
+        ("AR spray expansion", app.spray_var, 0, 180, "%"),
+        ("Jump expansion", app.jump_var, 0, 140, "%"),
+        ("Recovery time", app.recovery_var, 100, 1500, " ms"),
+    ):
+        row = tk.Frame(reactive, bg=PANEL)
+        row.pack(fill="x", pady=(7, 1))
+        top = tk.Frame(row, bg=PANEL)
+        top.pack(fill="x")
+        label(top, title, 10, TEXT, True).pack(side="left")
+        value = tk.StringVar(value=f"{var.get()}{suffix}")
+        label(top, "", 9, ACCENT, True, textvariable=value).pack(side="right")
+        app.reactive_labels.append((var, value, suffix))
+        tk.Scale(
+            row, from_=lower, to=upper, orient="horizontal",
+            variable=var, resolution=10 if suffix == " ms" else 5,
+            showvalue=False, bg=PANEL, fg=TEXT, troughcolor=CARD,
+            activebackground=ACCENT, highlightthickness=0,
+            bd=0, sliderrelief="flat", sliderlength=15,
+            width=8, command=lambda _v: on_scale(app)
+        ).pack(fill="x")
+    action(reactive, "Preview spray + jump →",
+           lambda: test_spread_preview(app), primary=True).pack(anchor="w", pady=(12, 3))
+    label(reactive, "Approximates native bloom; the white HUD may expand differently. "
+          "Does not affect builds, pickaxe, or scoped aiming.", 9, MUTED,
+          wraplength=430, justify="left").pack(anchor="w", pady=(8, 0))
+
     ads = card(parent)
     ads.pack(fill="x", pady=(0, 14))
-    header(ads, "02  /  ADS", "Right-click behavior",
+    header(ads, "03  /  ADS", "Right-click behavior",
            "Choose the same aiming mode you use in-game.")
     selection = tk.Frame(ads, bg=PANEL)
     selection.pack(fill="x", pady=(12, 0))
@@ -304,7 +344,7 @@ def create_gameplay_page(app, parent):
 
     mapping = card(parent)
     mapping.pack(fill="x")
-    header(mapping, "03  /  BINDS", "Weapon slot mapping",
+    header(mapping, "04  /  BINDS", "Weapon slot mapping",
            "Your 1–5 keys select the corresponding reticle.")
     grid = tk.Frame(mapping, bg=PANEL)
     grid.pack(fill="x", pady=(12, 0))
@@ -350,6 +390,20 @@ def choose_mode(app, mode):
 def choose_aim(app, mode):
     app.ads_input_var.set(mode)
     app.options_changed()
+    refresh_interface(app)
+
+
+def test_spread_preview(app):
+    app.preview_test_multiplier = 1.0 + (app.cfg["spray_percent"] + app.cfg["jump_percent"])/100.0
+    refresh_interface(app)
+    if getattr(app, "spread_preview_job", None):
+        app.window.after_cancel(app.spread_preview_job)
+    app.spread_preview_job = app.window.after(850, lambda: reset_spread_preview(app))
+
+
+def reset_spread_preview(app):
+    app.preview_test_multiplier = 1.0
+    app.spread_preview_job = None
     refresh_interface(app)
 
 
@@ -401,10 +455,15 @@ def refresh_interface(app):
             active = app.cfg["aim_input"] == mode
             btn.configure(fg=ACCENT if active else TEXT,
                           bg=GREEN_DARK if active else CARD)
+    for var, label_var, suffix in getattr(app, "reactive_labels", []):
+        label_var.set(f"{var.get()}{suffix}")
     mode = app.cfg["active_mode"]
     color = app.cfg["colors"][mode]
     app.preview_name.set(mode)
-    app.preview_color.set(f"Color {color}   /   Size {app.cfg['size']}%")
+    app.preview_color.set(
+        f"Color {color}   /   Size {app.cfg['size']}%   /   "
+        f"Bloom ×{getattr(app, 'preview_test_multiplier', 1.0):.2f}"
+    )
     canvas = app.preview_canvas
     canvas.delete("all")
     width = canvas.winfo_width()
@@ -422,4 +481,5 @@ def refresh_interface(app):
     canvas.create_line(cx, 0, cx, height, fill="#273541", dash=(4, 5))
     canvas.create_line(0, cy, width, cy, fill="#273541", dash=(4, 5))
     scale = 1.17 * app.cfg["size"] / 100
-    draw_reticle(canvas, cx, cy, mode, color, scale, app.cfg["thickness"], tag="preview")
+    draw_reticle(canvas, cx, cy, mode, color, scale, app.cfg["thickness"],
+                 tag="preview", spread=getattr(app, "preview_test_multiplier", 1.0))
