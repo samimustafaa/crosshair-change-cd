@@ -22,10 +22,10 @@ jobs:
           python-version: '3.12'
 
       - name: Install Native Lab dependencies before testing
-        run: python -m pip install --disable-pip-version-check pillow lz4 psutil
+        run: python -m pip install --disable-pip-version-check pillow lz4 psutil mss numpy
 
       - name: Check Python syntax
-        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py native_assets.py native_panel.py game_status.py reactive_spread.py
+        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py native_assets.py native_panel.py game_status.py reactive_spread.py vision_assist.py
 
       - name: Test aim, build and crosshair behavior
         run: python -m unittest discover -s tests -v
@@ -39,7 +39,7 @@ jobs:
           "number=$version" >> $env:GITHUB_OUTPUT
 
       - name: Install PyInstaller
-        run: python -m pip install --disable-pip-version-check pyinstaller pillow lz4 psutil
+        run: python -m pip install --disable-pip-version-check pyinstaller pillow lz4 psutil mss numpy
 
       - name: Build crosshair app with installed Python runtime
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name sg0hann-Crosshair sg0hann_crosshair.py
@@ -99,6 +99,6 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists. Bump VERSION to publish the next update."
           } else {
-            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair-Portable.zip' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "v1.0.9: fast input-based reactive spread for AR spraying and jumping (LMB and Space) with adjustable expansion, recovery and gameplay preview. Existing game status, NPK research, onedir runtime, and SHA256 updater preserved."
+            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair-Portable.zip' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "v1.1.0: per-weapon shotgun and AR bloom, separate Sniper scope mode, adjustable ADS shrinking and optional confidence-gated white reticle screen tracking with baseline calibration. No claimed accuracy percentage."
             if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
           }
