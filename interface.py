@@ -73,6 +73,8 @@ def build_interface(app):
 
     app.nav_buttons = {}
     app.pages = {}
+    app.page_shells = {}
+    app.page_canvases = {}
     app.mode_tiles = {}
     app.color_buttons = {}
     app.previews = {}
@@ -112,7 +114,7 @@ def build_interface(app):
     left_footer = tk.Frame(sidebar, bg=SIDEBAR)
     left_footer.pack(side="bottom", fill="x", padx=23, pady=21)
     tk.Frame(left_footer, height=1, bg=BORDER).pack(fill="x", pady=(0, 17))
-    label(left_footer, f"VERSION  {app_version()}", 9, MUTED, True).pack(anchor="w")
+    label(left_footer, f"VERSION  v{app.version}", 9, MUTED, True).pack(anchor="w")
     label(left_footer, "Built for Creative Destruction", 9, MUTED).pack(anchor="w", pady=(5, 0))
     action(left_footer, "Quit app", app.quit).pack(fill="x", pady=(15, 0))
 
@@ -163,9 +165,31 @@ def build_interface(app):
     content = tk.Frame(main, bg=BG)
     content.pack(side="left", fill="both", expand=True)
     for key in ("Crosshair", "Gameplay", "Updates"):
-        frame = tk.Frame(content, bg=BG)
-        frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+        shell = tk.Frame(content, bg=BG)
+        shell.place(relx=0, rely=0, relwidth=1, relheight=1)
+        surface = tk.Canvas(shell, bg=BG, bd=0, highlightthickness=0)
+        surface.pack(side="left", fill="both", expand=True)
+        scroll = tk.Scrollbar(shell, orient="vertical", command=surface.yview,
+                              bg=CARD, activebackground=CARD_HOVER,
+                              troughcolor=BG, relief="flat", width=9)
+        scroll.pack(side="right", fill="y")
+        surface.configure(yscrollcommand=scroll.set)
+        frame = tk.Frame(surface, bg=BG)
+        window_id = surface.create_window((0, 0), window=frame, anchor="nw")
+        frame.bind("<Configure>", lambda _e, cv=surface:
+                   cv.configure(scrollregion=cv.bbox("all")))
+        surface.bind("<Configure>", lambda e, cv=surface, wid=window_id:
+                     cv.itemconfigure(wid, width=e.width))
         app.pages[key] = frame
+        app.page_shells[key] = shell
+        app.page_canvases[key] = surface
+
+    def wheel(event):
+        cv = app.page_canvases.get(app.current_page)
+        if cv is not None and app.window.winfo_containing(event.x_root, event.y_root):
+            cv.yview_scroll(-1 if event.delta > 0 else 1, "units")
+    app.window.bind("<MouseWheel>", wheel, add="+")
+    app.window.bind_all("<MouseWheel>", wheel, add="+")
 
     create_crosshair_page(app, app.pages["Crosshair"])
     create_gameplay_page(app, app.pages["Gameplay"])
@@ -173,12 +197,6 @@ def build_interface(app):
     app.current_page = ""
     show_page(app, "Crosshair")
     app.preview_canvas.bind("<Configure>", lambda _: refresh_interface(app))
-
-
-def app_version():
-    # Late import avoids a circular import with the main application.
-    from sg0hann_crosshair import VERSION
-    return f"v{VERSION}"
 
 
 def create_crosshair_page(app, parent):
@@ -295,7 +313,7 @@ def create_updates_page(app, parent):
     updates.pack(fill="x", pady=(0, 14))
     header(updates, "RELEASE CHANNEL  /  GITHUB", "Stay up to date",
            "Automatic startup checks, with your approval before installing.")
-    label(updates, f"Installed: {app_version()}", 15, TEXT, True).pack(anchor="w", pady=(23, 8))
+    label(updates, f"Installed: v{app.version}", 15, TEXT, True).pack(anchor="w", pady=(23, 8))
     label(updates, "", 10, MUTED, textvariable=app.update_status,
           wraplength=445, justify="left").pack(anchor="w", pady=(0, 16))
     app.update_button = action(updates, "Check for updates  ↗",
@@ -340,7 +358,7 @@ def show_page(app, key):
     }
     app.page_title.set(titles[key][0])
     app.page_subtitle.set(titles[key][1])
-    app.pages[key].tkraise()
+    app.page_shells[key].tkraise()
     for name, btn in app.nav_buttons.items():
         selected = name == key
         btn.configure(bg=GREEN_DARK if selected else SIDEBAR,
@@ -349,7 +367,7 @@ def show_page(app, key):
 
 
 def refresh_interface(app):
-    from sg0hann_crosshair import draw_reticle
+    draw_reticle = app.draw_reticle
     if not hasattr(app, "preview_canvas"):
         return
     for mode, canvas in app.previews.items():
