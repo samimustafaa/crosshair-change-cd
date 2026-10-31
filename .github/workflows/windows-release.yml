@@ -22,10 +22,10 @@ jobs:
           python-version: '3.12'
 
       - name: Install Native Lab dependencies before testing
-        run: python -m pip install --disable-pip-version-check pillow lz4
+        run: python -m pip install --disable-pip-version-check pillow lz4 psutil
 
       - name: Check Python syntax
-        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py native_assets.py native_panel.py
+        run: python -m py_compile sg0hann_crosshair.py updater.py aim_state.py build_state.py interface.py native_assets.py native_panel.py game_status.py
 
       - name: Test aim, build and crosshair behavior
         run: python -m unittest discover -s tests -v
@@ -39,7 +39,7 @@ jobs:
           "number=$version" >> $env:GITHUB_OUTPUT
 
       - name: Install PyInstaller
-        run: python -m pip install --disable-pip-version-check pyinstaller pillow lz4
+        run: python -m pip install --disable-pip-version-check pyinstaller pillow lz4 psutil
 
       - name: Build crosshair app with installed Python runtime
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name sg0hann-Crosshair sg0hann_crosshair.py
@@ -99,6 +99,6 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists. Bump VERSION to publish the next update."
           } else {
-            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair-Portable.zip' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "Windows installer + complete portable folder ZIP with local Python runtime. Fixes the PyInstaller one-file temporary _MEI/python312.dll loading failure. Startup/manual update checks and SHA256 verification remain supported."
+            gh release create $tag 'dist/sg0hann-Crosshair-Setup.exe' 'dist/sg0hann-Crosshair-Portable.zip' 'dist/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --title "sg0hann Crosshair Color Lab $tag" --notes "v1.0.7: visible NPK archive loading with resource summary, candidate previews, and live GAME OPENED/CLOSED process badge. The overlay still requires game focus. Uses onedir runtime with verified startup and SHA256 updater."
             if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
           }
