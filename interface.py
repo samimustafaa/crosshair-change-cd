@@ -130,7 +130,15 @@ def build_interface(app):
     app.page_subtitle = tk.StringVar(value="Adjust the look and feel of every weapon.")
     label(top_left, "", 20, TEXT, True, textvariable=app.page_title).pack(anchor="w")
     label(top_left, "", 10, MUTED, textvariable=app.page_subtitle).pack(anchor="w", pady=(3, 0))
-    action(top, "Hide to game  →", app.hide, primary=True).pack(side="right", pady=(3, 0))
+    right = tk.Frame(top, bg=BG)
+    right.pack(side="right", pady=(3, 0))
+    action(right, "Hide to game  →", app.hide, primary=True).pack(side="right")
+    status_area = tk.Frame(right, bg=BG)
+    status_area.pack(side="right", padx=(0, 15))
+    app.game_badge = tk.Label(status_area, textvariable=app.game_status, bg="#2E2427",
+                              fg="#FF9C9C", font=(FONT, 10, "bold"), padx=12, pady=6)
+    app.game_badge.pack(anchor="e")
+    label(status_area, "", 8, MUTED, textvariable=app.game_detail).pack(anchor="e", pady=(4,0))
 
     tk.Frame(workspace, height=1, bg=BORDER).pack(fill="x", padx=25)
 
