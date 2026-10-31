@@ -61,6 +61,8 @@ class NativePanel:
         self.caption(info, "The original combat crosshair IDs have NOT been proven. "
                            "This tab lets you compare, recolor and export image assets "
                            "without changing your installation.", 10, MUTED).pack(anchor="w")
+        self.caption(info, "BROWSING AN NPK DOES NOT APPLY CROSSHAIR COLORS IN-GAME.",
+                     9, "#F6B17B", True).pack(anchor="w", pady=(8, 0))
         self.caption(info, "Any patched NPK is only an experimental copy. "
                            "It may not work in the game or may fail integrity checks.",
                      9, "#F6B17B", True).pack(anchor="w",pady=(9,0))
@@ -123,7 +125,7 @@ class NativePanel:
         return int(self.selection.get().split()[0])
 
     def source(self):
-        path=Path(self.archive.get())
+        path=Path(self.archive.get().strip().strip('"'))
         if not path.is_file() or path.suffix.lower() != ".npk":
             raise ValueError("Select an existing .npk archive.")
         return path
